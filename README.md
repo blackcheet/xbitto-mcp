@@ -8,6 +8,8 @@ from your computer.
 It runs on your own computer. Files go **straight from your computer to your own Bunny account**, using
 upload addresses the Xbitto API signs. They never pass through Xbitto.
 
+Full docs: [xbitto.com/docs](https://xbitto.com/docs).
+
 ## What You Need
 
 - Node.js 20 or newer
