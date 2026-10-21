@@ -37,6 +37,18 @@ describe("add_pool_items", () => {
     expect(result.json).toEqual({ added: 247, alreadyInPool: 3, tooLong: 1, givenToWaitingOrders: 0, pool: { left: 7 } });
   });
 
+  it("reads only a .txt or .csv list", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
+    await writeFile(join(dir, "id_ed25519"), "secret");
+    await writeFile(join(dir, "keys.csv"), "A\nB\n");
+    const { api, calls } = fakeApi(() => ({ body: { added: 2, duplicates: 0, served: 0, stats: {} } }));
+    const { call } = await mcpClient(api);
+    expect((await call("add_pool_items", { code: "aB3xY9", file: join(dir, "id_ed25519") })).text).toMatch(/\.txt or \.csv/);
+    expect(calls).toHaveLength(0);
+    expect((await call("add_pool_items", { code: "aB3xY9", file: join(dir, "keys.csv") })).json).toMatchObject({ added: 2 });
+    expect((calls[0]!.body as { codes: string[] }).codes).toEqual(["A", "B"]);
+  });
+
   it("says how far it got when the API stops it", async () => {
     let n = 0;
     const { api } = fakeApi(() => (++n === 1 ? { body: { added: 100, duplicates: 0, served: 0, stats: {} } } : { status: 409, body: { error: { code: "pool_full" } } }));

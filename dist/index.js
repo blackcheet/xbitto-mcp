@@ -14103,11 +14103,11 @@ var require_mtime_precision = __commonJS({
     function probe(file2, fs, callback) {
       const cachedPrecision = fs[cacheSymbol];
       if (cachedPrecision) {
-        return fs.stat(file2, (err, stat2) => {
+        return fs.stat(file2, (err, stat3) => {
           if (err) {
             return callback(err);
           }
-          callback(null, stat2.mtime, cachedPrecision);
+          callback(null, stat3.mtime, cachedPrecision);
         });
       }
       const mtime = new Date(Math.ceil(Date.now() / 1e3) * 1e3 + 5);
@@ -14115,13 +14115,13 @@ var require_mtime_precision = __commonJS({
         if (err) {
           return callback(err);
         }
-        fs.stat(file2, (err2, stat2) => {
+        fs.stat(file2, (err2, stat3) => {
           if (err2) {
             return callback(err2);
           }
-          const precision = stat2.mtime.getTime() % 1e3 === 0 ? "s" : "ms";
+          const precision = stat3.mtime.getTime() % 1e3 === 0 ? "s" : "ms";
           Object.defineProperty(fs, cacheSymbol, { value: precision });
-          callback(null, stat2.mtime, precision);
+          callback(null, stat3.mtime, precision);
         });
       });
     }
@@ -14175,14 +14175,14 @@ var require_lockfile = __commonJS({
         if (options.stale <= 0) {
           return callback(Object.assign(new Error("Lock file is already being held"), { code: "ELOCKED", file: file2 }));
         }
-        options.fs.stat(lockfilePath, (err2, stat2) => {
+        options.fs.stat(lockfilePath, (err2, stat3) => {
           if (err2) {
             if (err2.code === "ENOENT") {
               return acquireLock(file2, { ...options, stale: 0 }, callback);
             }
             return callback(err2);
           }
-          if (!isLockStale(stat2, options)) {
+          if (!isLockStale(stat3, options)) {
             return callback(Object.assign(new Error("Lock file is already being held"), { code: "ELOCKED", file: file2 }));
           }
           removeLock(file2, options, (err3) => {
@@ -14194,8 +14194,8 @@ var require_lockfile = __commonJS({
         });
       });
     }
-    function isLockStale(stat2, options) {
-      return stat2.mtime.getTime() < Date.now() - options.stale;
+    function isLockStale(stat3, options) {
+      return stat3.mtime.getTime() < Date.now() - options.stale;
     }
     function removeLock(file2, options, callback) {
       options.fs.rmdir(getLockFile(file2, options), (err) => {
@@ -14213,7 +14213,7 @@ var require_lockfile = __commonJS({
       lock2.updateDelay = lock2.updateDelay || options.update;
       lock2.updateTimeout = setTimeout(() => {
         lock2.updateTimeout = null;
-        options.fs.stat(lock2.lockfilePath, (err, stat2) => {
+        options.fs.stat(lock2.lockfilePath, (err, stat3) => {
           const isOverThreshold = lock2.lastUpdate + options.stale < Date.now();
           if (err) {
             if (err.code === "ENOENT" || isOverThreshold) {
@@ -14222,7 +14222,7 @@ var require_lockfile = __commonJS({
             lock2.updateDelay = 1e3;
             return updateLock(file2, options);
           }
-          const isMtimeOurs = lock2.mtime.getTime() === stat2.mtime.getTime();
+          const isMtimeOurs = lock2.mtime.getTime() === stat3.mtime.getTime();
           if (!isMtimeOurs) {
             return setLockAsCompromised(
               file2,
@@ -14347,11 +14347,11 @@ var require_lockfile = __commonJS({
         if (err) {
           return callback(err);
         }
-        options.fs.stat(getLockFile(file3, options), (err2, stat2) => {
+        options.fs.stat(getLockFile(file3, options), (err2, stat3) => {
           if (err2) {
             return err2.code === "ENOENT" ? callback(null, false) : callback(err2);
           }
-          return callback(null, !isLockStale(stat2, options));
+          return callback(null, !isLockStale(stat3, options));
         });
       });
     }
@@ -44433,7 +44433,8 @@ var EMPTY_COMPLETION_RESULT = {
 };
 
 // src/tools/links.ts
-import { readFile as readFile2 } from "node:fs/promises";
+import { readFile as readFile2, stat as stat2 } from "node:fs/promises";
+import { extname as extname2 } from "node:path";
 
 // src/files.ts
 import { open as open2, readdir, readFile, stat } from "node:fs/promises";
@@ -45576,6 +45577,14 @@ async function defaultWallets(api) {
 // src/tools/links.ts
 var POOL_ADD_MAX = 100;
 var POOL_ITEM_MAX_LENGTH = 200;
+var ITEMS_FILE_MAX_BYTES = 2 * 1024 * 1024;
+async function readItemsFile(path) {
+  if (![".txt", ".csv"].includes(extname2(path).toLowerCase())) throw new Error("The items file must be a .txt or .csv file.");
+  const info = await stat2(path).catch(() => null);
+  if (!info?.isFile()) throw new Error(`Not a file: ${path}`);
+  if (info.size > ITEMS_FILE_MAX_BYTES) throw new Error("The items file is larger than 2 MB.");
+  return readFile2(path, "utf8");
+}
 var query = (params) => {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) if (value !== void 0 && value !== "") search.set(key, String(value));
@@ -45670,12 +45679,12 @@ function registerLinkTools(server, api) {
       inputSchema: {
         code,
         items: external_exports.array(external_exports.string()).optional(),
-        file: external_exports.string().optional().describe("Path to a UTF-8 text file, one item per line.")
+        file: external_exports.string().optional().describe("Path to a .txt or .csv file the user named, one item per line (at most 2 MB).")
       }
     },
     handle(async ({ code: code2, items, file: file2 }) => {
       if (items === void 0 === (file2 === void 0)) throw new Error("Give either items or file.");
-      const text = file2 !== void 0 ? await readFile2(file2, "utf8") : items.join("\n");
+      const text = file2 !== void 0 ? await readItemsFile(file2) : items.join("\n");
       const lines = readItemLines(text, POOL_ITEM_MAX_LENGTH);
       let added = 0;
       let alreadyThere = 0;

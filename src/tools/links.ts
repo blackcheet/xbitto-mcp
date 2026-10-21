@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import { extname } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Api } from "../api.js";
@@ -10,6 +11,18 @@ import { code, handle, paywallBody, paywallFields } from "./common.js";
 // The API takes this many pool items in one request, each at most this long.
 export const POOL_ADD_MAX = 100;
 export const POOL_ITEM_MAX_LENGTH = 200;
+
+// Every line of this file becomes something a consumer can buy, so only a plain list is read: a .txt or
+// .csv file of reasonable size, never whatever file an instruction hidden in a web page names.
+const ITEMS_FILE_MAX_BYTES = 2 * 1024 * 1024;
+
+async function readItemsFile(path: string): Promise<string> {
+  if (![".txt", ".csv"].includes(extname(path).toLowerCase())) throw new Error("The items file must be a .txt or .csv file.");
+  const info = await stat(path).catch(() => null);
+  if (!info?.isFile()) throw new Error(`Not a file: ${path}`);
+  if (info.size > ITEMS_FILE_MAX_BYTES) throw new Error("The items file is larger than 2 MB.");
+  return readFile(path, "utf8");
+}
 
 const query = (params: Record<string, string | number | undefined>) => {
   const search = new URLSearchParams();
@@ -130,12 +143,12 @@ export function registerLinkTools(server: McpServer, api: Api) {
       inputSchema: {
         code,
         items: z.array(z.string()).optional(),
-        file: z.string().optional().describe("Path to a UTF-8 text file, one item per line."),
+        file: z.string().optional().describe("Path to a .txt or .csv file the user named, one item per line (at most 2 MB)."),
       },
     },
     handle(async ({ code, items, file }: { code: string; items?: string[]; file?: string }) => {
       if ((items === undefined) === (file === undefined)) throw new Error("Give either items or file.");
-      const text = file !== undefined ? await readFile(file, "utf8") : items!.join("\n");
+      const text = file !== undefined ? await readItemsFile(file) : items!.join("\n");
       const lines = readItemLines(text, POOL_ITEM_MAX_LENGTH);
       let added = 0;
       let alreadyThere = 0;
