@@ -14,7 +14,7 @@ Full docs: [xbitto.com/docs](https://xbitto.com/docs).
 
 - Node.js 20 or newer
 - An Xbitto account with a verified email and at least one payout wallet
-- An API key: in the Xbitto dashboard, **Settings → API Keys → Create Key**. Copy it right away; it is shown once.
+- An API key: in the Xbitto dashboard, open **AI Agents** and select **Create Key**. Copy it right away; it is shown once.
 - For the Vault: Bunny Stream (videos, series) and/or Bunny Storage (galleries) connected in **Settings**
 
 ## Install
@@ -104,7 +104,7 @@ progress with `get_upload_job`. Uploads stop if the MCP server stops; what alrea
 
 An API key can't add or change payout wallets, connect Bunny, change the password, email or other account
 settings, buy credits, pay promoters, run paid wallet checks, export or delete the account, or create
-other keys. Do those in the dashboard. Remove a key any time under **Settings → API Keys**.
+other keys. Do those in the dashboard. Remove a key any time on the **AI Agents** page.
 
 Keep the key secret: anyone who has it can create and change your links and Vault items.
 

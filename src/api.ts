@@ -18,7 +18,7 @@ export class ApiError extends Error {
 // What the API's error codes mean, said the way an agent can act on them. Anything not listed is passed
 // on by its code: the API is the authority on what it refuses.
 const MESSAGES: Record<string, string> = {
-  unauthorized: "The API key is missing, wrong or was removed. Create a key in the Xbitto dashboard under Settings → API Keys and set XBITTO_API_KEY.",
+  unauthorized: "The API key is missing, wrong or was removed. Create a key on the AI Agents page of the Xbitto dashboard and set XBITTO_API_KEY.",
   api_key_forbidden: "API keys can't do this. Do it in the Xbitto dashboard.",
   email_not_verified: "The account's email isn't verified yet. Verify it in the Xbitto dashboard first.",
   account_frozen: "The account is restricted, so it can't create or change content.",
@@ -131,6 +131,6 @@ export const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(re
 // key is missing, rather than starting a server whose every tool fails.
 export function apiFromEnv(env: NodeJS.ProcessEnv = process.env): Api {
   const key = env.XBITTO_API_KEY?.trim();
-  if (!key) throw new Error("XBITTO_API_KEY is not set. Create a key in the Xbitto dashboard under Settings → API Keys.");
+  if (!key) throw new Error("XBITTO_API_KEY is not set. Create a key on the AI Agents page of the Xbitto dashboard.");
   return createApi({ baseUrl: env.XBITTO_API_URL?.trim() || DEFAULT_API_URL, key });
 }

@@ -160,7 +160,7 @@ describe("the key", () => {
     const { call } = await mcpClient(api);
     const result = await call("whoami");
     expect(result.error).toBe(true);
-    expect(result.text).toMatch(/API Keys/);
+    expect(result.text).toMatch(/AI Agents page/);
     expect(result.text).not.toContain(KEY);
   });
 });

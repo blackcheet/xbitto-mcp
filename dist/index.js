@@ -36308,7 +36308,7 @@ var ApiError = class extends Error {
   code;
 };
 var MESSAGES = {
-  unauthorized: "The API key is missing, wrong or was removed. Create a key in the Xbitto dashboard under Settings \u2192 API Keys and set XBITTO_API_KEY.",
+  unauthorized: "The API key is missing, wrong or was removed. Create a key on the AI Agents page of the Xbitto dashboard and set XBITTO_API_KEY.",
   api_key_forbidden: "API keys can't do this. Do it in the Xbitto dashboard.",
   email_not_verified: "The account's email isn't verified yet. Verify it in the Xbitto dashboard first.",
   account_frozen: "The account is restricted, so it can't create or change content.",
@@ -36393,7 +36393,7 @@ function safeJson(text) {
 var wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms));
 function apiFromEnv(env = process.env) {
   const key = env.XBITTO_API_KEY?.trim();
-  if (!key) throw new Error("XBITTO_API_KEY is not set. Create a key in the Xbitto dashboard under Settings \u2192 API Keys.");
+  if (!key) throw new Error("XBITTO_API_KEY is not set. Create a key on the AI Agents page of the Xbitto dashboard.");
   return createApi({ baseUrl: env.XBITTO_API_URL?.trim() || DEFAULT_API_URL, key });
 }
 
