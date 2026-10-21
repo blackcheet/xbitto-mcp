@@ -30,7 +30,13 @@ export function registerOrderTools(server: McpServer, api: Api) {
 
   server.registerTool(
     "get_order",
-    { title: "Get Order", description: "One order, with the payment under review if there is one.", inputSchema: { orderId }, annotations: { readOnlyHint: true } },
+    {
+      title: "Get Order",
+      description:
+        "One order, with the payment under review if there is one. For a pool, `order.quantity` is how many items were bought and `poolCodes.owed` how many the pool still owes (add items to serve them); the items themselves are never shown to an API key.",
+      inputSchema: { orderId },
+      annotations: { readOnlyHint: true },
+    },
     handle(({ orderId }: { orderId: string }) => api.get(`/api/orders/${orderId}`)),
   );
 
