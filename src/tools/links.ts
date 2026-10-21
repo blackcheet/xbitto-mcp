@@ -161,15 +161,24 @@ export function registerLinkTools(server: McpServer, api: Api) {
       title: "Set Paywall",
       description:
         "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. " +
-        "Ask the user for the title and price, and whether there is a code to give (one for everyone, or one item per order) before calling. " +
+        "Ask the user for the title and price, and whether there is a code to give (one for everyone, or items from a pool) before calling. " +
         "Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. " +
-        "For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
+        "For items from a pool use codeMode 'unique' and fill the pool with add_pool_items; maxPerOrder lets one consumer buy several in one order (ask the user).",
       inputSchema: {
         code,
         ...paywallFields,
         coverUrl: z.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
         blurCover: z.boolean().optional().describe("Blur the cover on the landing page."),
-        codeMode: z.enum(["same", "unique"]).optional().describe("'same': one code for every consumer. 'unique': each order takes one item from the pool."),
+        codeMode: z.enum(["same", "unique"]).optional().describe("'same': one code for every consumer. 'unique': each order takes its own items from the pool."),
+        maxPerOrder: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe(
+            "In 'unique' mode: how many items one order may buy (1–50). The landing page then asks how many; the price is per item and the Sales Fee is charged once per order, on its total. Left out: 1, one item per order.",
+          ),
         accessCode: z.string().max(500).optional().describe("The code every consumer gets, in 'same' mode. Left out: none."),
         codeLabel: z.string().max(40).optional().describe('What the consumer page calls the code, e.g. "License Key".'),
       },
@@ -185,6 +194,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
         coverUrl?: string;
         blurCover?: boolean;
         codeMode?: "same" | "unique";
+        maxPerOrder?: number;
         accessCode?: string;
         codeLabel?: string;
       }) => {
@@ -192,6 +202,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
           coverUrl: args.coverUrl ?? null,
           coverBlur: args.blurCover ?? false,
           codeMode: args.codeMode ?? "same",
+          maxPerOrder: args.maxPerOrder ?? 1,
           codeLabel: args.codeLabel ?? "",
           ...(args.accessCode === undefined ? {} : { accessCode: args.accessCode }),
         });

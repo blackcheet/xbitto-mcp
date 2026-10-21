@@ -36338,6 +36338,7 @@ var MESSAGES = {
   screening_unavailable: "Wallet screening isn't available on the platform right now.",
   series_full: "A series holds at most 100 episodes.",
   pool_full: "The pool holds at most 1000 unused items.",
+  insufficient_stock: "Not that many items are left for one order.",
   not_found: "Not found. Check the code or id.",
   invalid_input: "The request wasn't valid.",
   code_unavailable: "Xbitto couldn't assign a short code. Try again."
@@ -45703,13 +45704,16 @@ function registerLinkTools(server, api) {
     "set_paywall",
     {
       title: "Set Paywall",
-      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. Ask the user for the title and price, and whether there is a code to give (one for everyone, or one item per order) before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
+      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. Ask the user for the title and price, and whether there is a code to give (one for everyone, or items from a pool) before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. For items from a pool use codeMode 'unique' and fill the pool with add_pool_items; maxPerOrder lets one consumer buy several in one order (ask the user).",
       inputSchema: {
         code,
         ...paywallFields,
         coverUrl: external_exports.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
         blurCover: external_exports.boolean().optional().describe("Blur the cover on the landing page."),
-        codeMode: external_exports.enum(["same", "unique"]).optional().describe("'same': one code for every consumer. 'unique': each order takes one item from the pool."),
+        codeMode: external_exports.enum(["same", "unique"]).optional().describe("'same': one code for every consumer. 'unique': each order takes its own items from the pool."),
+        maxPerOrder: external_exports.number().int().min(1).max(50).optional().describe(
+          "In 'unique' mode: how many items one order may buy (1\u201350). The landing page then asks how many; the price is per item and the Sales Fee is charged once per order, on its total. Left out: 1, one item per order."
+        ),
         accessCode: external_exports.string().max(500).optional().describe("The code every consumer gets, in 'same' mode. Left out: none."),
         codeLabel: external_exports.string().max(40).optional().describe('What the consumer page calls the code, e.g. "License Key".')
       }
@@ -45720,6 +45724,7 @@ function registerLinkTools(server, api) {
           coverUrl: args.coverUrl ?? null,
           coverBlur: args.blurCover ?? false,
           codeMode: args.codeMode ?? "same",
+          maxPerOrder: args.maxPerOrder ?? 1,
           codeLabel: args.codeLabel ?? "",
           ...args.accessCode === void 0 ? {} : { accessCode: args.accessCode }
         });
@@ -46144,7 +46149,7 @@ async function uploadEpisodes(api, job, code2, title, picked, first) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.2.0" : "dev" },
+    { name: "xbitto", version: true ? "0.3.0" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links with access code pools, and Vault galleries, videos and series. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

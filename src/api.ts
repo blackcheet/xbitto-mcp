@@ -48,6 +48,7 @@ const MESSAGES: Record<string, string> = {
   screening_unavailable: "Wallet screening isn't available on the platform right now.",
   series_full: "A series holds at most 100 episodes.",
   pool_full: "The pool holds at most 1000 unused items.",
+  insufficient_stock: "Not that many items are left for one order.",
   not_found: "Not found. Check the code or id.",
   invalid_input: "The request wasn't valid.",
   code_unavailable: "Xbitto couldn't assign a short code. Try again.",

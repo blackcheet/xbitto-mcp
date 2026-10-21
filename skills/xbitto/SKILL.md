@@ -13,8 +13,8 @@ API key.
 
 - **Creator**: the account owner (the user). **Consumer**: whoever pays. **Promoter**: sells for a commission.
 - **Gated link**: a link with a paywall. After paying, the consumer gets the destination and, optionally,
-  an access code: one code for everyone (`codeMode: "same"`) or one **item** per order from a pool
-  (`codeMode: "unique"`).
+  an access code: one code for everyone (`codeMode: "same"`) or their own **items** from a pool
+  (`codeMode: "unique"`), one per order or up to `maxPerOrder` (at most 50).
 - **Vault**: content the creator sells from their own Bunny account: a gallery (1–20 pictures), a video
   (with an optional preview clip), or a series (up to 100 episodes, first few free).
 
@@ -28,9 +28,11 @@ API key.
    not an IP, a local host or an Xbitto short link. Prices are decimal strings (`"5"`, `"4.99"`), in USDT/USDC,
    and each sale costs the Sales Fee shown by `whoami` in credits.
 3. Leave `payoutWalletIds` out unless the user names wallets: the first usable wallet on each network is used.
-4. **Selling items one per order** (keys, accounts, invites):
+4. **Selling items from a pool** (keys, accounts, invites):
    `create_link` → `set_paywall` with `codeMode: "unique"` (and a `codeLabel` such as "License Key") → `add_pool_items`.
    Pass a file path for long lists; the tool trims, removes repeats and sends 100 per request. A pool holds up to 1000 unused items.
+   Ask whether one consumer may buy several at once: if so, pass `maxPerOrder` (2–50). The price is per item; the Sales Fee is
+   charged once per order, on its total.
 5. **Uploads** (`create_gallery`, `create_video`, `create_series`, `add_episodes`) return a `jobId` at once.
    Poll `get_upload_job` every 30 seconds or so and report progress; don't start the same upload twice.
    After uploading, Bunny encodes videos; `get_vault_item` shows when they are ready.
