@@ -32,12 +32,18 @@ export const paywallFields = {
     .max(1000)
     .optional()
     .describe("Shown before payment. Supports **bold**, _italic_ and lists with '- ' or '1. '. Links show as plain text."),
-  price: z.string().regex(/^\d+(\.\d{1,6})?$/).describe('Price in USDT/USDC as a decimal string, e.g. "5" or "4.99".'),
+  price: z
+    .string()
+    .regex(/^\d+(\.\d{1,6})?$/)
+    .describe('Price in USDT/USDC as a decimal string, e.g. "5" or "4.99": above 0, at most 1000000. The Sales Fee (see whoami) comes out of credits per sale.'),
   payoutWalletIds: z
     .array(z.string())
     .optional()
     .describe("Wallet ids from list_wallets, at most one per network. Left out: the first usable wallet on each network."),
-  verifyPayer: z.boolean().optional().describe("Screen the consumer's wallet before showing the payment address (each real check costs credits)."),
+  verifyPayer: z
+    .boolean()
+    .optional()
+    .describe("Screen the consumer's wallet before showing the payment address (each real check costs credits). Only when whoami shows walletScreening."),
 };
 
 type PaywallInput = { title: string; description?: string; price: string; payoutWalletIds?: string[]; verifyPayer?: boolean };

@@ -36312,6 +36312,7 @@ var MESSAGES = {
   api_key_forbidden: "API keys can't do this. Do it in the Xbitto dashboard.",
   email_not_verified: "The account's email isn't verified yet. Verify it in the Xbitto dashboard first.",
   account_frozen: "The account is restricted, so it can't create or change content.",
+  account_suspended: "The account is suspended. Its API keys no longer work.",
   paywalls_paused: "Paid content is temporarily paused on Xbitto.",
   bunny_not_connected: "Bunny Stream isn't connected. Connect it in the Xbitto dashboard under Settings.",
   storage_not_connected: "Bunny Storage isn't connected. Connect it in the Xbitto dashboard under Settings.",
@@ -36322,6 +36323,13 @@ var MESSAGES = {
   target_unsafe: "Xbitto can't accept this content.",
   target_unreachable: "The destination's domain doesn't resolve. Check the address.",
   target_immutable: "A link's destination can't be changed.",
+  invalid_url: "The destination isn't a valid URL. Give a full address starting with https:// or http://.",
+  target_too_long: "The destination is longer than 2048 characters.",
+  unsupported_protocol: "Only http and https destinations can be shortened.",
+  credentials_not_allowed: "Remove the username and password from the URL.",
+  host_not_allowed: "This destination isn't allowed: use a public website address, not an IP address, a local host or an Xbitto short link.",
+  destination_required: "This link was made before a destination was required, so it has nothing to sell. Create a new link.",
+  invalid_free_count: "Free episodes can be at most half of all episodes.",
   invalid_price: `The price isn't valid. Give it as a decimal string, e.g. "5" or "4.99".`,
   invalid_payout_address: "The payout wallets aren't valid. Use ids from list_wallets, at most one per network.",
   invalid_cover_url: "The cover must be an https image URL.",
@@ -45548,9 +45556,9 @@ var code = external_exports.string().regex(/^[0-9A-Za-z]{1,32}$/, "a short code,
 var paywallFields = {
   title: external_exports.string().min(1).max(120).describe("What the consumer sees as the title."),
   description: external_exports.string().max(1e3).optional().describe("Shown before payment. Supports **bold**, _italic_ and lists with '- ' or '1. '. Links show as plain text."),
-  price: external_exports.string().regex(/^\d+(\.\d{1,6})?$/).describe('Price in USDT/USDC as a decimal string, e.g. "5" or "4.99".'),
+  price: external_exports.string().regex(/^\d+(\.\d{1,6})?$/).describe('Price in USDT/USDC as a decimal string, e.g. "5" or "4.99": above 0, at most 1000000. The Sales Fee (see whoami) comes out of credits per sale.'),
   payoutWalletIds: external_exports.array(external_exports.string()).optional().describe("Wallet ids from list_wallets, at most one per network. Left out: the first usable wallet on each network."),
-  verifyPayer: external_exports.boolean().optional().describe("Screen the consumer's wallet before showing the payment address (each real check costs credits).")
+  verifyPayer: external_exports.boolean().optional().describe("Screen the consumer's wallet before showing the payment address (each real check costs credits). Only when whoami shows walletScreening.")
 };
 async function paywallBody(api, input2, extra = {}) {
   const payoutAddressIds = input2.payoutWalletIds?.length ? input2.payoutWalletIds : await defaultWallets(api);
@@ -45591,18 +45599,62 @@ var query = (params) => {
   const text = search.toString();
   return text ? `?${text}` : "";
 };
+var NETWORK_NAMES = { solana: "Solana", tron: "TRON" };
+var amount = (micro) => String(micro / 1e6);
+async function readiness(api) {
+  const [me, credits, quota, wallets, stream, storage, paywalls, policy] = await Promise.all([
+    api.get("/api/auth/me"),
+    api.get("/api/credits/summary"),
+    api.get("/api/links/quota"),
+    api.get("/api/payout-addresses"),
+    api.get("/api/vault/connection"),
+    api.get("/api/vault/storage"),
+    api.get("/api/account/paywalls"),
+    api.get("/api/account/payer-policy")
+  ]);
+  const { user } = me;
+  const usable = (rail) => wallets.addresses.some((wallet) => wallet.chain === rail.chain && wallet.asset === rail.asset && wallet.blacklistedAt === null);
+  const networks = wallets.rails.map((rail) => ({ network: NETWORK_NAMES[rail.chain] ?? rail.chain, coin: rail.asset, wallet: usable(rail) }));
+  const linksLeft = Math.max(0, quota.quota.limit - quota.quota.used);
+  const missing = [];
+  if (!user.emailVerified) missing.push("The email isn't verified: verify it in the Xbitto dashboard.");
+  if (user.frozen) missing.push("The account is restricted by consumer complaints: nothing new can be created. The user can appeal under Notification in the dashboard.");
+  if (linksLeft === 0) missing.push("Today's link allowance is used up (it resets at 00:00 UTC; deleted links count too).");
+  if (!paywalls.open) missing.push("Paid content is paused on Xbitto for now: only free links can be created.");
+  if (!networks.some((rail) => rail.wallet)) missing.push("No usable payout wallet: add one in the dashboard under Wallet before selling anything.");
+  if (stream.connection === null) missing.push("Bunny Stream isn't connected (needed for videos and series): connect it in the dashboard under Settings.");
+  if (storage.storage === null) missing.push("Bunny Storage isn't connected (needed for galleries): connect it in the dashboard under Settings.");
+  if (credits.balanceMicro <= 0) missing.push("The credit balance is not above 0, so paid links take no orders until credits are bought in the dashboard under Usage.");
+  const canCreate = user.emailVerified && !user.frozen && linksLeft > 0;
+  const canSell = canCreate && paywalls.open && networks.some((rail) => rail.wallet);
+  return {
+    account: { email: user.email, emailVerified: user.emailVerified, restricted: user.frozen },
+    linksToday: { used: quota.quota.used, limit: quota.quota.limit, left: linksLeft },
+    credits: amount(credits.balanceMicro),
+    // Taken from the creator's credits each time a consumer's payment is delivered.
+    salesFee: `${amount(policy.fees.baseMicro)} + ${policy.fees.percentBasisPoints / 100}% of the price`,
+    payoutNetworks: networks,
+    bunny: { stream: stream.connection !== null, storage: storage.storage !== null },
+    walletScreening: policy.scoringAvailable,
+    canCreate: {
+      freeLink: canCreate,
+      gatedLink: canSell,
+      gallery: canSell && storage.storage !== null,
+      video: canSell && stream.connection !== null,
+      series: canSell && stream.connection !== null
+    },
+    missing
+  };
+}
 function registerLinkTools(server, api) {
   server.registerTool(
     "whoami",
     {
       title: "Who Am I",
-      description: "The Xbitto account this API key belongs to, and its credit balance.",
+      description: "The Xbitto account this API key belongs to and what it can create right now: links left today, payout wallets, Bunny connections, credits and the Sales Fee. Call it before creating anything; `missing` says what the user must fix in the dashboard first.",
       annotations: { readOnlyHint: true }
     },
-    handle(async () => {
-      const [me, credits] = await Promise.all([api.get("/api/auth/me"), api.get("/api/credits/summary")]);
-      return { ...me, credits };
-    })
+    handle(() => readiness(api))
   );
   server.registerTool(
     "list_wallets",
@@ -45638,8 +45690,10 @@ function registerLinkTools(server, api) {
     "create_link",
     {
       title: "Create Link",
-      description: "Create a short link to a destination URL. Its destination can never be changed afterwards. To sell it, call set_paywall on it next.",
-      inputSchema: { targetUrl: external_exports.string().url().describe("The destination, http or https.") }
+      description: "Create a short link to a destination URL. Its destination can never be changed afterwards, and every link counts against today's allowance even if deleted, so confirm the exact URL with the user first. To sell it, call set_paywall on it next: check with whoami that a Gated link can be made before creating the link.",
+      inputSchema: {
+        targetUrl: external_exports.string().url().max(2048).describe("The destination: a public http or https address, up to 2048 characters. Not an IP address, a local host, a URL with a username or password, or an Xbitto short link.")
+      }
     },
     handle(({ targetUrl }) => api.post("/api/links", { targetUrl }))
   );
@@ -45647,7 +45701,7 @@ function registerLinkTools(server, api) {
     "set_paywall",
     {
       title: "Set Paywall",
-      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
+      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. Ask the user for the title and price, and whether there is a code to give (one for everyone, or one item per order) before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
       inputSchema: {
         code,
         ...paywallFields,
@@ -45887,7 +45941,7 @@ function registerVaultTools(server, api) {
     "create_gallery",
     {
       title: "Create Gallery",
-      description: "Sell a gallery of 1\u201320 pictures (JPEG, PNG, WebP, GIF or AVIF, each at most 20 MB) from this computer. They go straight to the creator's own Bunny Storage zone. One picture is the cover (blurred or not on the landing page).",
+      description: "Sell a gallery of 1\u201320 pictures (JPEG, PNG, WebP, GIF or AVIF, each at most 20 MB) from this computer. They go straight to the creator's own Bunny Storage zone. One picture is the cover (blurred or not on the landing page). Ask the user for the pictures, the title, the price and which picture is the cover before calling.",
       inputSchema: {
         images: files,
         ...paywallFields,
@@ -45941,7 +45995,7 @@ function registerVaultTools(server, api) {
     "create_video",
     {
       title: "Create Video",
-      description: "Sell a video from this computer, with an optional short preview clip that plays on the landing page. Files go straight to the creator's own Bunny Stream library; the item takes orders once Bunny has finished encoding the main video.",
+      description: "Sell a video from this computer, with an optional short preview clip that plays on the landing page. Files go straight to the creator's own Bunny Stream library; the item takes orders once Bunny has finished encoding the main video. A video has no cover: the preview clip is all consumers see before paying. Ask the user for the video, the title, the price and whether there is a preview clip before calling.",
       inputSchema: {
         video: external_exports.string().describe("Path to the main video file."),
         previewClip: external_exports.string().optional().describe("Path to a short preview clip (a separate file, not a cut of the main video)."),
@@ -45973,7 +46027,7 @@ function registerVaultTools(server, api) {
     "create_series",
     {
       title: "Create Series",
-      description: "Sell a series of episodes (a short drama or web series) for one price, with the first few free. Up to 100 episodes from this computer, numbered in the order given (a folder: natural name order). Files go straight to the creator's Bunny Stream library. It takes orders once at least freeCount + 1 episodes (and at least 2) are ready.",
+      description: "Sell a series of episodes (a short drama or web series) for one price, with the first few free. Up to 100 episodes from this computer, numbered in the order given (a folder: natural name order). Files go straight to the creator's Bunny Stream library. It takes orders once at least freeCount + 1 episodes (and at least 2) are ready. Ask the user for the episodes, the title, the price and how many are free before calling.",
       inputSchema: {
         episodes: files,
         ...paywallFields,
@@ -46084,9 +46138,9 @@ async function uploadEpisodes(api, job, code2, title, picked, first) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.1.1" : "dev" },
+    { name: "xbitto", version: true ? "0.2.0" : "dev" },
     {
-      instructions: "Tools for a creator's Xbitto account: short links, Gated links with access code pools, and Vault galleries, videos and series. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
+      instructions: "Tools for a creator's Xbitto account: short links, Gated links with access code pools, and Vault galleries, videos and series. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }
   );
   registerLinkTools(server, api);

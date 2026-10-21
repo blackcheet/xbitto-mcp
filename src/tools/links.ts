@@ -31,18 +31,76 @@ const query = (params: Record<string, string | number | undefined>) => {
   return text ? `?${text}` : "";
 };
 
+type Me = { user: { email: string; emailVerified: boolean; frozen: boolean } };
+type Wallets = { addresses: { chain: string; asset: string; blacklistedAt: number | null }[]; rails: { chain: string; asset: string }[] };
+type Quota = { quota: { used: number; limit: number } };
+type PayerPolicy = { fees: { baseMicro: number; percentBasisPoints: number }; scoringAvailable: boolean };
+
+const NETWORK_NAMES: Record<string, string> = { solana: "Solana", tron: "TRON" };
+const amount = (micro: number) => String(micro / 1_000_000);
+
+// What the account can make right now, read from the same answers the dashboard reads, so an agent can
+// ask the user for what is missing before it creates a link that counts against today's allowance.
+export async function readiness(api: Api) {
+  const [me, credits, quota, wallets, stream, storage, paywalls, policy] = await Promise.all([
+    api.get<Me>("/api/auth/me"),
+    api.get<{ balanceMicro: number }>("/api/credits/summary"),
+    api.get<Quota>("/api/links/quota"),
+    api.get<Wallets>("/api/payout-addresses"),
+    api.get<{ connection: unknown }>("/api/vault/connection"),
+    api.get<{ storage: unknown }>("/api/vault/storage"),
+    api.get<{ open: boolean }>("/api/account/paywalls"),
+    api.get<PayerPolicy>("/api/account/payer-policy"),
+  ]);
+  const { user } = me;
+  const usable = (rail: { chain: string; asset: string }) =>
+    wallets.addresses.some((wallet) => wallet.chain === rail.chain && wallet.asset === rail.asset && wallet.blacklistedAt === null);
+  const networks = wallets.rails.map((rail) => ({ network: NETWORK_NAMES[rail.chain] ?? rail.chain, coin: rail.asset, wallet: usable(rail) }));
+  const linksLeft = Math.max(0, quota.quota.limit - quota.quota.used);
+
+  const missing: string[] = [];
+  if (!user.emailVerified) missing.push("The email isn't verified: verify it in the Xbitto dashboard.");
+  if (user.frozen) missing.push("The account is restricted by consumer complaints: nothing new can be created. The user can appeal under Notification in the dashboard.");
+  if (linksLeft === 0) missing.push("Today's link allowance is used up (it resets at 00:00 UTC; deleted links count too).");
+  if (!paywalls.open) missing.push("Paid content is paused on Xbitto for now: only free links can be created.");
+  if (!networks.some((rail) => rail.wallet)) missing.push("No usable payout wallet: add one in the dashboard under Wallet before selling anything.");
+  if (stream.connection === null) missing.push("Bunny Stream isn't connected (needed for videos and series): connect it in the dashboard under Settings.");
+  if (storage.storage === null) missing.push("Bunny Storage isn't connected (needed for galleries): connect it in the dashboard under Settings.");
+  if (credits.balanceMicro <= 0) missing.push("The credit balance is not above 0, so paid links take no orders until credits are bought in the dashboard under Usage.");
+
+  const canCreate = user.emailVerified && !user.frozen && linksLeft > 0;
+  const canSell = canCreate && paywalls.open && networks.some((rail) => rail.wallet);
+  return {
+    account: { email: user.email, emailVerified: user.emailVerified, restricted: user.frozen },
+    linksToday: { used: quota.quota.used, limit: quota.quota.limit, left: linksLeft },
+    credits: amount(credits.balanceMicro),
+    // Taken from the creator's credits each time a consumer's payment is delivered.
+    salesFee: `${amount(policy.fees.baseMicro)} + ${policy.fees.percentBasisPoints / 100}% of the price`,
+    payoutNetworks: networks,
+    bunny: { stream: stream.connection !== null, storage: storage.storage !== null },
+    walletScreening: policy.scoringAvailable,
+    canCreate: {
+      freeLink: canCreate,
+      gatedLink: canSell,
+      gallery: canSell && storage.storage !== null,
+      video: canSell && stream.connection !== null,
+      series: canSell && stream.connection !== null,
+    },
+    missing,
+  };
+}
+
 export function registerLinkTools(server: McpServer, api: Api) {
   server.registerTool(
     "whoami",
     {
       title: "Who Am I",
-      description: "The Xbitto account this API key belongs to, and its credit balance.",
+      description:
+        "The Xbitto account this API key belongs to and what it can create right now: links left today, payout wallets, " +
+        "Bunny connections, credits and the Sales Fee. Call it before creating anything; `missing` says what the user must fix in the dashboard first.",
       annotations: { readOnlyHint: true },
     },
-    handle(async () => {
-      const [me, credits] = await Promise.all([api.get<{ user: unknown }>("/api/auth/me"), api.get<unknown>("/api/credits/summary")]);
-      return { ...me, credits };
-    }),
+    handle(() => readiness(api)),
   );
 
   server.registerTool(
@@ -83,8 +141,16 @@ export function registerLinkTools(server: McpServer, api: Api) {
     {
       title: "Create Link",
       description:
-        "Create a short link to a destination URL. Its destination can never be changed afterwards. To sell it, call set_paywall on it next.",
-      inputSchema: { targetUrl: z.string().url().describe("The destination, http or https.") },
+        "Create a short link to a destination URL. Its destination can never be changed afterwards, and every link counts against " +
+        "today's allowance even if deleted, so confirm the exact URL with the user first. To sell it, call set_paywall on it next: " +
+        "check with whoami that a Gated link can be made before creating the link.",
+      inputSchema: {
+        targetUrl: z
+          .string()
+          .url()
+          .max(2048)
+          .describe("The destination: a public http or https address, up to 2048 characters. Not an IP address, a local host, a URL with a username or password, or an Xbitto short link."),
+      },
     },
     handle(({ targetUrl }: { targetUrl: string }) => api.post("/api/links", { targetUrl })),
   );
@@ -95,6 +161,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
       title: "Set Paywall",
       description:
         "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. " +
+        "Ask the user for the title and price, and whether there is a code to give (one for everyone, or one item per order) before calling. " +
         "Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. " +
         "For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
       inputSchema: {

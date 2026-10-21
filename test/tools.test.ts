@@ -154,6 +154,64 @@ describe("create_gallery", () => {
   });
 });
 
+describe("whoami", () => {
+  const answers = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    "/api/auth/me": { user: { email: "c@example.com", emailVerified: true, frozen: false } },
+    "/api/credits/summary": { balanceMicro: 4_500_000 },
+    "/api/links/quota": { quota: { used: 3, limit: 15 } },
+    "/api/payout-addresses": { addresses: [wallets.addresses[1]], rails: [{ chain: "solana", asset: "USDC" }, { chain: "tron", asset: "USDT" }] },
+    "/api/vault/connection": { connection: { libraryId: "1" } },
+    "/api/vault/storage": { storage: null },
+    "/api/account/paywalls": { open: true },
+    "/api/account/payer-policy": { fees: { baseMicro: 200_000, percentBasisPoints: 500 }, scoringAvailable: false },
+    ...over,
+  });
+  const ask = async (over?: Record<string, unknown>) => {
+    const table = answers(over);
+    const { api } = fakeApi((c) => (c.path in table ? { body: table[c.path] } : undefined));
+    return (await (await mcpClient(api)).call("whoami")).json;
+  };
+
+  it("says what the account can create and what is missing", async () => {
+    expect(await ask()).toEqual({
+      account: { email: "c@example.com", emailVerified: true, restricted: false },
+      linksToday: { used: 3, limit: 15, left: 12 },
+      credits: "4.5",
+      salesFee: "0.2 + 5% of the price",
+      payoutNetworks: [
+        { network: "Solana", coin: "USDC", wallet: false },
+        { network: "TRON", coin: "USDT", wallet: true },
+      ],
+      bunny: { stream: true, storage: false },
+      walletScreening: false,
+      canCreate: { freeLink: true, gatedLink: true, gallery: false, video: true, series: true },
+      missing: [expect.stringMatching(/Bunny Storage isn't connected/)],
+    });
+  });
+
+  it("holds back paid items without a wallet or while paid content is paused", async () => {
+    const noWallet = await ask({ "/api/payout-addresses": { addresses: [], rails: [{ chain: "tron", asset: "USDT" }] } });
+    expect(noWallet.canCreate).toMatchObject({ freeLink: true, gatedLink: false, video: false });
+    expect(noWallet.missing).toContainEqual(expect.stringMatching(/No usable payout wallet/));
+
+    const paused = await ask({ "/api/account/paywalls": { open: false }, "/api/credits/summary": { balanceMicro: 0 } });
+    expect(paused.canCreate).toMatchObject({ freeLink: true, gatedLink: false });
+    expect(paused.missing).toEqual(expect.arrayContaining([expect.stringMatching(/paused/), expect.stringMatching(/credit balance/)]));
+
+    const spent = await ask({ "/api/links/quota": { quota: { used: 15, limit: 15 } } });
+    expect(spent.canCreate.freeLink).toBe(false);
+  });
+});
+
+describe("error codes", () => {
+  it("explain a refused destination by its public reason", async () => {
+    const { api } = fakeApi(() => ({ status: 400, body: { error: { code: "host_not_allowed" } } }));
+    const result = await (await mcpClient(api)).call("create_link", { targetUrl: "https://xbit.my/abc" });
+    expect(result.error).toBe(true);
+    expect(result.text).toMatch(/Xbitto short link/);
+  });
+});
+
 describe("the key", () => {
   it("never shows up in what a tool says", async () => {
     const { api } = fakeApi(() => ({ status: 401, body: { error: { code: "unauthorized" } } }));

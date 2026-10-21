@@ -20,8 +20,13 @@ API key.
 
 ## How to Work
 
-1. Start with `whoami` if you're unsure the key works. Errors explain what to do in the dashboard.
-2. Prices are decimal strings (`"5"`, `"4.99"`), in USDT/USDC.
+1. Start with `whoami`. `canCreate` says what the account can make right now and `missing` what the user
+   has to fix in the dashboard first (verified email, a payout wallet, Bunny connected, links left today,
+   credits above 0). Tell the user before creating anything that couldn't sell.
+2. Ask for everything a create tool needs before calling it: a link's destination can never be changed, and
+   every link counts against today's allowance even if deleted. A destination is a public http(s) address,
+   not an IP, a local host or an Xbitto short link. Prices are decimal strings (`"5"`, `"4.99"`), in USDT/USDC,
+   and each sale costs the Sales Fee shown by `whoami` in credits.
 3. Leave `payoutWalletIds` out unless the user names wallets: the first usable wallet on each network is used.
 4. **Selling items one per order** (keys, accounts, invites):
    `create_link` → `set_paywall` with `codeMode: "unique"` (and a `codeLabel` such as "License Key") → `add_pool_items`.

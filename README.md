@@ -76,7 +76,7 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 
 | Tool | What it does |
 |---|---|
-| `whoami` | The account the key belongs to and its credit balance |
+| `whoami` | The account the key belongs to, and what it can create right now: links left today, wallets, Bunny, credits, the Sales Fee |
 | `list_wallets` | Your payout wallets (paywalls use their ids) |
 | `list_links`, `get_link` | Your links and their paywall settings |
 | `create_link` | A short link to a URL (its destination can't be changed later) |

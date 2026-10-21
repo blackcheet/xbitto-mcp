@@ -38,7 +38,8 @@ export function registerVaultTools(server: McpServer, api: Api) {
       title: "Create Gallery",
       description:
         "Sell a gallery of 1–20 pictures (JPEG, PNG, WebP, GIF or AVIF, each at most 20 MB) from this computer. " +
-        "They go straight to the creator's own Bunny Storage zone. One picture is the cover (blurred or not on the landing page).",
+        "They go straight to the creator's own Bunny Storage zone. One picture is the cover (blurred or not on the landing page). " +
+        "Ask the user for the pictures, the title, the price and which picture is the cover before calling.",
       inputSchema: {
         images: files,
         ...paywallFields,
@@ -99,7 +100,8 @@ export function registerVaultTools(server: McpServer, api: Api) {
       title: "Create Video",
       description:
         "Sell a video from this computer, with an optional short preview clip that plays on the landing page. " +
-        "Files go straight to the creator's own Bunny Stream library; the item takes orders once Bunny has finished encoding the main video.",
+        "Files go straight to the creator's own Bunny Stream library; the item takes orders once Bunny has finished encoding the main video. " +
+        "A video has no cover: the preview clip is all consumers see before paying. Ask the user for the video, the title, the price and whether there is a preview clip before calling.",
       inputSchema: {
         video: z.string().describe("Path to the main video file."),
         previewClip: z.string().optional().describe("Path to a short preview clip (a separate file, not a cut of the main video)."),
@@ -136,7 +138,8 @@ export function registerVaultTools(server: McpServer, api: Api) {
       description:
         "Sell a series of episodes (a short drama or web series) for one price, with the first few free. Up to 100 episodes from this computer, " +
         "numbered in the order given (a folder: natural name order). Files go straight to the creator's Bunny Stream library. " +
-        "It takes orders once at least freeCount + 1 episodes (and at least 2) are ready.",
+        "It takes orders once at least freeCount + 1 episodes (and at least 2) are ready. " +
+        "Ask the user for the episodes, the title, the price and how many are free before calling.",
       inputSchema: {
         episodes: files,
         ...paywallFields,
