@@ -19,13 +19,10 @@ upload addresses the Xbitto API signs. They never pass through Xbitto.
 
 There is no npm package yet; the server installs straight from this repository.
 
-**Claude Code**
+The dashboard's **AI Agents** page shows these steps with your new key already filled in.
 
-```sh
-claude mcp add xbitto -e XBITTO_API_KEY=xb_your_key -- npx -y github:blackcheet/xbitto-mcp
-```
-
-**Claude Desktop, Cursor and other clients** (JSON config)
+**Claude Desktop**: Settings → Developer → Edit Config. **Cursor**: `~/.cursor/mcp.json`. If the file
+already has `"mcpServers"`, put the `xbitto` entry inside it, then restart the app.
 
 ```json
 {
@@ -39,7 +36,37 @@ claude mcp add xbitto -e XBITTO_API_KEY=xb_your_key -- npx -y github:blackcheet/
 }
 ```
 
-On Windows, some clients need `"command": "cmd"` and `"args": ["/c", "npx", "-y", "github:blackcheet/xbitto-mcp"]`.
+**Claude Code**
+
+```sh
+claude mcp add xbitto -e XBITTO_API_KEY=xb_your_key -- npx -y github:blackcheet/xbitto-mcp
+```
+
+**ChatGPT Desktop** uses the Codex settings: add this to `~/.codex/config.toml`
+(Windows: `%USERPROFILE%\.codex\config.toml`) and restart ChatGPT.
+
+```toml
+[mcp_servers.xbitto]
+command = "npx"
+args = ["-y", "github:blackcheet/xbitto-mcp"]
+startup_timeout_sec = 120
+
+[mcp_servers.xbitto.env]
+XBITTO_API_KEY = "xb_your_key"
+```
+
+**Grok Build**: add this to `~/.grok/config.toml`, then check it with `grok mcp doctor xbitto`.
+
+```toml
+[mcp_servers.xbitto]
+command = "npx"
+args = ["-y", "github:blackcheet/xbitto-mcp"]
+env = { XBITTO_API_KEY = "xb_your_key" }
+startup_timeout_sec = 120
+```
+
+The first start downloads the server from GitHub, so it can take a little longer. On Windows, if an app
+can't start `npx`, use `"command": "cmd"` with `"args": ["/c", "npx", "-y", "github:blackcheet/xbitto-mcp"]`.
 
 To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 
