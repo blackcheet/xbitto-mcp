@@ -1,6 +1,6 @@
 {
   "name": "xbitto-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for Xbitto: let an AI agent create links, fill access code pools and upload galleries, videos and episodes.",
   "license": "MIT",
   "private": true,

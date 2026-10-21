@@ -45647,7 +45647,7 @@ function registerLinkTools(server, api) {
     "set_paywall",
     {
       title: "Set Paywall",
-      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. Replaces the paywall's settings, so pass every field you want kept. For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
+      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
       inputSchema: {
         code,
         ...paywallFields,
@@ -46060,6 +46060,8 @@ function registerVaultTools(server, api) {
     handle(({ code: code2 }) => api.get(`/api/vault/${code2}`))
   );
 }
+var RESIGN_BEFORE_S = 30 * 60;
+var freshGrant = async (api, code2, episodeId) => (await api.post(`/api/vault/${code2}/episodes/${episodeId}/upload`)).upload;
 async function uploadEpisodes(api, job, code2, title, picked, first) {
   let uploaded = 0;
   for (let start = 0; start < picked.length; start += EPISODES_PER_REQUEST) {
@@ -46069,7 +46071,10 @@ async function uploadEpisodes(api, job, code2, title, picked, first) {
     });
     for (const [index, file2] of part.entries()) {
       const number4 = first + start + index;
-      const ok2 = await runItem(job.items[start + index], (onPercent) => sendVideo(file2.path, uploads[index].upload, `${title} \xB7 ${number4}`, videoType(file2.path), onPercent));
+      const ok2 = await runItem(job.items[start + index], async (onPercent) => {
+        const grant = uploads[index].upload.expires - Date.now() / 1e3 > RESIGN_BEFORE_S ? uploads[index].upload : await freshGrant(api, code2, uploads[index].id);
+        await sendVideo(file2.path, grant, `${title} \xB7 ${number4}`, videoType(file2.path), onPercent);
+      });
       if (ok2) uploaded++;
     }
   }
@@ -46079,7 +46084,7 @@ async function uploadEpisodes(api, job, code2, title, picked, first) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.1.0" : "dev" },
+    { name: "xbitto", version: true ? "0.1.1" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links with access code pools, and Vault galleries, videos and series. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

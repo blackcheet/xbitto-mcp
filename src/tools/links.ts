@@ -95,7 +95,8 @@ export function registerLinkTools(server: McpServer, api: Api) {
       title: "Set Paywall",
       description:
         "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. " +
-        "Replaces the paywall's settings, so pass every field you want kept. For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
+        "Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. " +
+        "For one code per order use codeMode 'unique' and fill the pool with add_pool_items.",
       inputSchema: {
         code,
         ...paywallFields,

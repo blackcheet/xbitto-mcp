@@ -12,7 +12,7 @@ beforeAll(async () => {
 afterAll(() => bunny.close());
 
 const wallets = { addresses: [{ id: "w-sol", chain: "solana", asset: "USDC", blacklistedAt: null }, { id: "w-tron", chain: "tron", asset: "USDT", blacklistedAt: null }] };
-const grant = (videoId: string) => ({ endpoint: `${bunny.origin}/tus`, libraryId: "764011", videoId, signature: `sig-${videoId}`, expires: 1 });
+const grant = (videoId: string) => ({ endpoint: `${bunny.origin}/tus`, libraryId: "764011", videoId, signature: `sig-${videoId}`, expires: Math.floor(Date.now() / 1000) + 6 * 3600 });
 
 async function finished(call: Awaited<ReturnType<typeof mcpClient>>["call"], jobId: string) {
   for (let i = 0; i < 200; i++) {
@@ -93,6 +93,24 @@ describe("create_series", () => {
       ["Night Train · 3", "v3", 1000],
     ]);
     expect(uploads[0]!.headers.signature).toBe("sig-v1");
+  });
+
+  it("signs an episode again when its part's grant is nearly spent", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
+    await writeFile(join(dir, "EP1.mp4"), Buffer.alloc(10, 1));
+    const now = Math.floor(Date.now() / 1000);
+    const { api, calls } = fakeApi((c: Call) => {
+      if (c.path === "/api/payout-addresses") return { body: wallets };
+      if (c.path === "/api/vault/series") return { status: 201, body: { code: "Old1" } };
+      if (c.path === "/api/vault/Old1/episodes") return { status: 201, body: { uploads: [{ id: "e1", upload: { ...grant("stale"), expires: now + 60 } }] } };
+      if (c.path === "/api/vault/Old1/episodes/e1/upload") return { body: { upload: { ...grant("fresh"), expires: now + 21600 } } };
+      return undefined;
+    });
+    const { call } = await mcpClient(api);
+    const started = await call("create_series", { episodes: dir, title: "Resign", price: "1", freeCount: 0 });
+    expect((await finished(call, started.json.jobId)).state).toBe("done");
+    expect(calls.some((c) => c.path === "/api/vault/Old1/episodes/e1/upload")).toBe(true);
+    expect([...bunny.tus.values()].find((upload) => upload.metadata.title === "Resign · 1")!.headers.videoId).toBe("fresh");
   });
 
   it("refuses more free episodes than half before asking the API", async () => {

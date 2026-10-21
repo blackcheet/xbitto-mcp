@@ -32,6 +32,7 @@ API key.
 6. **Series**: a folder is taken in natural name order (EP2 before EP10). `freeCount` is at most half the
    episodes. It takes orders once at least `freeCount + 1` episodes (and at least 2) are ready.
 7. `set_paywall` replaces the paywall settings: to change one field, read the link with `get_link` first and pass the rest back.
+   The access code and unused pool items are never shown to an API key; leave `accessCode` out to keep the saved one.
 8. `confirm_payment` and `reject_payment` can't be undone. Only call them after the user has decided.
 
 ## What the Key Can't Do

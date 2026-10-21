@@ -230,6 +230,10 @@ export function registerVaultTools(server: McpServer, api: Api) {
   );
 }
 
+const RESIGN_BEFORE_S = 30 * 60;
+const freshGrant = async (api: Api, code: string, episodeId: string) =>
+  (await api.post<{ upload: UploadGrant }>(`/api/vault/${code}/episodes/${episodeId}/upload`)).upload;
+
 // Episodes in parts of EPISODES_PER_REQUEST, as the dashboard sends them: each part is made, then its
 // files go up one after another, before the next part is asked for. A part that can't be made stops the
 // job, keeping every episode already uploaded.
@@ -242,7 +246,12 @@ async function uploadEpisodes(api: Api, job: Job, code: string, title: string, p
     });
     for (const [index, file] of part.entries()) {
       const number = first + start + index;
-      const ok = await runItem(job.items[start + index]!, (onPercent) => sendVideo(file.path, uploads[index]!.upload, `${title} · ${number}`, videoType(file.path), onPercent));
+      const ok = await runItem(job.items[start + index]!, async (onPercent) => {
+        // A part's grants are signed when it is made (6 hours); on a slow connection the last episodes
+        // of a part may start after that, so an almost-spent grant is signed again first.
+        const grant = uploads[index]!.upload.expires - Date.now() / 1000 > RESIGN_BEFORE_S ? uploads[index]!.upload : await freshGrant(api, code, uploads[index]!.id);
+        await sendVideo(file.path, grant, `${title} · ${number}`, videoType(file.path), onPercent);
+      });
       if (ok) uploaded++;
     }
   }
