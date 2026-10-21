@@ -36309,6 +36309,7 @@ var ApiError = class extends Error {
 };
 var MESSAGES = {
   unauthorized: "The API key is missing, wrong or was removed. Create a key on the AI Agents page of the Xbitto dashboard and set XBITTO_API_KEY.",
+  region_blocked: "Xbitto isn't available from the place this computer connects from. See the Terms: https://xbitto.com/terms",
   api_key_forbidden: "API keys can't do this. Do it in the Xbitto dashboard.",
   email_not_verified: "The account's email isn't verified yet. Verify it in the Xbitto dashboard first.",
   account_frozen: "The account is restricted, so it can't create or change content.",
@@ -36379,7 +36380,8 @@ function createApi({ baseUrl, key, fetch: fetcher = fetch, backoffMs = [2e3, 5e3
       const data = text ? safeJson(text) : null;
       if (!res.ok) {
         const code2 = data?.error?.code;
-        throw new ApiError(res.status, typeof code2 === "string" ? code2 : "http_error");
+        if (typeof code2 === "string") throw new ApiError(res.status, code2);
+        throw new ApiError(res.status, res.status === 403 ? "region_blocked" : "http_error");
       }
       return data;
     }
@@ -45895,6 +45897,7 @@ function jobSummary(job) {
 var import_tus_js_client = __toESM(require_node(), 1);
 import { createReadStream } from "node:fs";
 import { readFile as readFile3 } from "node:fs/promises";
+var BUNNY_REGIONS = "Bunny doesn't serve some regions and networks.";
 function sendVideo(path, grant, title, type, onPercent) {
   return new Promise((resolve2, reject) => {
     const upload = new import_tus_js_client.Upload(createReadStream(path), {
@@ -45910,7 +45913,10 @@ function sendVideo(path, grant, title, type, onPercent) {
       },
       metadata: { filetype: type, title },
       onProgress: (sent, total) => onPercent(total > 0 ? Math.floor(sent / total * 100) : 0),
-      onError: (error62) => reject(new Error(`Bunny Stream refused the upload: ${error62.message}`)),
+      onError: (error62) => {
+        const status = error62.originalResponse?.getStatus();
+        reject(new Error(status === 403 ? `Bunny Stream refused the upload (403). ${BUNNY_REGIONS}` : `Bunny Stream refused the upload: ${error62.message}`));
+      },
       onSuccess: () => resolve2()
     });
     upload.start();
@@ -45919,7 +45925,7 @@ function sendVideo(path, grant, title, type, onPercent) {
 async function sendImage(url2, path, type, fetcher = fetch) {
   const body = await readFile3(path);
   const res = await fetcher(url2, { method: "PUT", headers: { "Content-Type": type, "Content-Length": String(body.length) }, body });
-  if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).`);
+  if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).${res.status === 403 ? ` ${BUNNY_REGIONS}` : ""}`);
 }
 
 // src/tools/vault.ts

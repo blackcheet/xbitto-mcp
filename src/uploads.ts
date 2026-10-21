@@ -1,13 +1,16 @@
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { Upload } from "tus-js-client";
+import { Upload, type DetailedError } from "tus-js-client";
 
 // Bytes go from this machine straight to the creator's own Bunny account, with the grants the Xbitto API
 // signed. Nothing passes through Xbitto: the API only signs the upload and, afterwards, looks at what
 // arrived.
 
 // What the API hands out for one video: Bunny Stream's tus endpoint and a signature bound to that video.
-export type UploadGrant = { endpoint: string; libraryId: string; videoId: string; signature: string; expires: number };
+// Said with a 403 from Bunny, which turns away some regions on its own.
+const BUNNY_REGIONS = "Bunny doesn't serve some regions and networks.";
+
+export type UploadGrant ={ endpoint: string; libraryId: string; videoId: string; signature: string; expires: number };
 
 // A video file into its video in the creator's Bunny Stream library, resumable within this run: tus
 // retries a dropped connection from where it got to. `onPercent` reports progress.
@@ -26,7 +29,10 @@ export function sendVideo(path: string, grant: UploadGrant, title: string, type:
       },
       metadata: { filetype: type, title },
       onProgress: (sent, total) => onPercent(total > 0 ? Math.floor((sent / total) * 100) : 0),
-      onError: (error) => reject(new Error(`Bunny Stream refused the upload: ${error.message}`)),
+      onError: (error) => {
+        const status = (error as DetailedError).originalResponse?.getStatus();
+        reject(new Error(status === 403 ? `Bunny Stream refused the upload (403). ${BUNNY_REGIONS}` : `Bunny Stream refused the upload: ${error.message}`));
+      },
       onSuccess: () => resolve(),
     });
     upload.start();
@@ -38,5 +44,5 @@ export function sendVideo(path: string, grant: UploadGrant, title: string, type:
 export async function sendImage(url: string, path: string, type: string, fetcher: typeof fetch = fetch): Promise<void> {
   const body = await readFile(path);
   const res = await fetcher(url, { method: "PUT", headers: { "Content-Type": type, "Content-Length": String(body.length) }, body });
-  if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).`);
+  if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).${res.status === 403 ? ` ${BUNNY_REGIONS}` : ""}`);
 }

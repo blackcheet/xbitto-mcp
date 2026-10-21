@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { wait } from "../src/api.js";
+import { createApi, wait } from "../src/api.js";
 import { fakeApi, fakeBunny, KEY, mcpClient, pngHeader, type Call } from "./fakes.js";
 
 let bunny: Awaited<ReturnType<typeof fakeBunny>>;
@@ -209,6 +209,18 @@ describe("error codes", () => {
     const result = await (await mcpClient(api)).call("create_link", { targetUrl: "https://xbit.my/abc" });
     expect(result.error).toBe(true);
     expect(result.text).toMatch(/Xbitto short link/);
+  });
+
+  it("tell a region block in front of the API from a refusal by it", async () => {
+    const blocked = createApi({
+      baseUrl: "https://api.test",
+      key: KEY,
+      fetch: (async () => new Response("<html>Sorry, you have been blocked</html>", { status: 403, headers: { "Content-Type": "text/html" } })) as typeof fetch,
+    });
+    expect((await (await mcpClient(blocked)).call("whoami")).text).toMatch(/^Xbitto isn't available from the place this computer connects from\. See the Terms/);
+    // A 403 the API itself answers keeps its own meaning.
+    const forbidden = fakeApi(() => ({ status: 403, body: { error: { code: "api_key_forbidden" } } }));
+    expect((await (await mcpClient(forbidden.api)).call("whoami")).text).toMatch(/API keys can't do this/);
   });
 });
 

@@ -19,7 +19,8 @@ export class ApiError extends Error {
 // on by its code: the API is the authority on what it refuses.
 const MESSAGES: Record<string, string> = {
   unauthorized: "The API key is missing, wrong or was removed. Create a key on the AI Agents page of the Xbitto dashboard and set XBITTO_API_KEY.",
-  api_key_forbidden: "API keys can't do this. Do it in the Xbitto dashboard.",
+  region_blocked: "Xbitto isn't available from the place this computer connects from. See the Terms: https://xbitto.com/terms",
+  api_key_forbidden:"API keys can't do this. Do it in the Xbitto dashboard.",
   email_not_verified: "The account's email isn't verified yet. Verify it in the Xbitto dashboard first.",
   account_frozen: "The account is restricted, so it can't create or change content.",
   account_suspended: "The account is suspended. Its API keys no longer work.",
@@ -111,7 +112,10 @@ export function createApi({ baseUrl, key, fetch: fetcher = fetch, backoffMs = [2
       const data = text ? safeJson(text) : null;
       if (!res.ok) {
         const code = (data as { error?: { code?: unknown } } | null)?.error?.code;
-        throw new ApiError(res.status, typeof code === "string" ? code : "http_error");
+        if (typeof code === "string") throw new ApiError(res.status, code);
+        // The API answers every refusal in JSON; a 403 page without it was sent by Cloudflare in front,
+        // which turns away the regions Xbitto doesn't serve.
+        throw new ApiError(res.status, res.status === 403 ? "region_blocked" : "http_error");
       }
       return data as T;
     }

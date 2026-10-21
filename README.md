@@ -110,8 +110,10 @@ Keep the key secret: anyone who has it can create and change your links and Vaul
 
 ## Network
 
-The server connects directly to `api.xbitto.com` and to Bunny. It doesn't use the `HTTP_PROXY` setting. If
-your network blocks or misroutes Bunny's upload address, use a system-wide VPN or proxy (TUN mode).
+The server connects directly to `api.xbitto.com` and to Bunny. It doesn't use the `HTTP_PROXY` setting.
+
+Xbitto isn't available in some regions, from the dashboard or from this server. See the
+[Terms](https://xbitto.com/terms).
 
 ## Settings
 
