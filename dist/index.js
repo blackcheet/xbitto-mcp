@@ -36339,6 +36339,8 @@ var MESSAGES = {
   series_full: "A series holds at most 100 episodes.",
   pool_full: "The pool holds at most 1000 unused items.",
   insufficient_stock: "Not that many items are left for one order.",
+  invalid_collection: "A collection name can be up to 24 characters and can't be a web address.",
+  collection_unsafe: "Xbitto can't accept this collection name. Rename it and try again.",
   not_found: "Not found. Check the code or id.",
   invalid_input: "The request wasn't valid.",
   code_unavailable: "Xbitto couldn't assign a short code. Try again."
@@ -45588,6 +45590,7 @@ async function defaultWallets(api) {
 // src/tools/links.ts
 var POOL_ADD_MAX = 100;
 var POOL_ITEM_MAX_LENGTH = 200;
+var COLLECTION_MAX_LENGTH = 24;
 var ITEMS_FILE_MAX_BYTES = 2 * 1024 * 1024;
 async function readItemsFile(path) {
   if (![".txt", ".csv"].includes(extname2(path).toLowerCase())) throw new Error("The items file must be a .txt or .csv file.");
@@ -45677,7 +45680,7 @@ function registerLinkTools(server, api) {
         q: external_exports.string().max(100).optional().describe("Search the short code, destination and paid title."),
         kind: external_exports.enum(["redirect", "paywall"]).optional(),
         status: external_exports.enum(["active", "disabled", "blocked"]).optional(),
-        tag: external_exports.string().optional(),
+        tag: external_exports.string().optional().describe("Only links in this collection (the API calls a link's collection its tag)."),
         cursor: external_exports.string().optional()
       },
       annotations: { readOnlyHint: true }
@@ -45688,6 +45691,42 @@ function registerLinkTools(server, api) {
     "get_link",
     { title: "Get Link", description: "One link with its paywall settings.", inputSchema: { code }, annotations: { readOnlyHint: true } },
     handle(({ code: code2 }) => api.get(`/api/links/${code2}`))
+  );
+  server.registerTool(
+    "set_collection",
+    {
+      title: "Set Collection",
+      description: "Put a link or Vault item in a collection, or take it out with an empty name. A collection groups items in the dashboard and is a tab on the creator's store, where consumers see its name.",
+      inputSchema: {
+        code,
+        collection: external_exports.string().max(COLLECTION_MAX_LENGTH).describe(`The collection's name, up to ${COLLECTION_MAX_LENGTH} characters, not a web address; "" for none.`)
+      }
+    },
+    handle(({ code: code2, collection }) => api.put(`/api/links/${code2}/tag`, { tag: collection }))
+  );
+  server.registerTool(
+    "get_store",
+    {
+      title: "Get Store",
+      description: "The creator's store (My Store): its public link, name and whether it is open, and its collections with how many items each shows. Null when the creator has never opened it; opening, closing and naming it are done in the dashboard.",
+      annotations: { readOnlyHint: true }
+    },
+    handle(async () => {
+      const [{ store }, { collections }] = await Promise.all([
+        api.get("/api/store"),
+        api.get("/api/store/collections")
+      ]);
+      return { store, collections };
+    })
+  );
+  server.registerTool(
+    "set_store_visibility",
+    {
+      title: "Show in Store",
+      description: "Show a paid link or Vault item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its title, price, picture and collection public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
+      inputSchema: { code, show: external_exports.boolean().describe("true to show it on the store, false to take it off.") }
+    },
+    handle(({ code: code2, show }) => api.put(`/api/links/${code2}/store`, { on: show }))
   );
   server.registerTool(
     "create_link",
@@ -46154,7 +46193,7 @@ async function uploadEpisodes(api, job, code2, title, picked, first) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.3.0" : "dev" },
+    { name: "xbitto", version: true ? "0.4.0" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links with access code pools, and Vault galleries, videos and series. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

@@ -80,6 +80,8 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `list_wallets` | Your payout wallets (paywalls use their ids) |
 | `list_links`, `get_link` | Your links and their paywall settings |
 | `create_link` | A short link to a URL (its destination can't be changed later) |
+| `set_collection` | Put a link or Vault item in a collection, or take it out |
+| `get_store`, `set_store_visibility` | Your store (My Store) and its collections; show a paid item on it or take it off |
 | `set_paywall` | Sell a link: price, title, description, cover, access code or a pool of items, and how many items one order can buy |
 | `add_pool_items` | Add license keys, logins or invite links to a pool, from a list or a text file, 100 per request |
 | `get_pool_stats` | How many pool items are left and used |
@@ -103,8 +105,8 @@ progress with `get_upload_job`. Uploads stop if the MCP server stops; what alrea
 ## What a Key Can't Do
 
 An API key can't add or change payout wallets, connect Bunny, change the password, email or other account
-settings, buy credits, pay promoters, run paid wallet checks, export or delete the account, or create
-other keys. Do those in the dashboard. Remove a key any time on the **AI Agents** page.
+settings, open, close or rename the store, buy credits, pay promoters, run paid wallet checks, export or
+delete the account, or create other keys. Do those in the dashboard. Remove a key any time on the **AI Agents** page.
 
 Keep the key secret: anyone who has it can create and change your links and Vault items.
 

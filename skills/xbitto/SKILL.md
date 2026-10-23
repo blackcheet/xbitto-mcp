@@ -17,6 +17,8 @@ API key.
   (`codeMode: "unique"`), one per order or up to `maxPerOrder` (at most 50).
 - **Vault**: content the creator sells from their own Bunny account: a gallery (1–20 pictures), a video
   (with an optional preview clip), or a series (up to 100 episodes, first few free).
+- **Store** (My Store): one public page of the creator's paid links and Vault items, grouped into tabs by
+  **collection**. Every item is off the store until switched on. The API calls a link's collection its `tag`.
 
 ## How to Work
 
@@ -42,11 +44,14 @@ API key.
    The access code, unused pool items and the items an order received are never shown to an API key; leave `accessCode`
    out to keep the saved one.
 8. `confirm_payment` and `reject_payment` can't be undone. Only call them after the user has decided.
+9. **Store**: `set_collection` files an item (up to 24 characters, not a web address; `""` takes it out). `set_store_visibility`
+   with `show: true` makes the item's title, price, picture and collection public on the store, so only do it when the user
+   asks. `get_store` is `null` until the creator opens the store in the dashboard; opening, closing and naming it are dashboard only.
 
 ## What the Key Can't Do
 
-Payout wallets, Bunny connections, account settings, buying credits, paying promoters, paid wallet checks,
-data export and deletion are dashboard only. Say so and point the user to https://app.xbitto.com.
+Payout wallets, Bunny connections, account settings, opening, closing or renaming the store, buying credits,
+paying promoters, paid wallet checks, data export and deletion are dashboard only. Say so and point the user to https://app.xbitto.com.
 
 ## Content
 

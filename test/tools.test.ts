@@ -203,6 +203,37 @@ describe("whoami", () => {
   });
 });
 
+describe("the store", () => {
+  it("files an item in a collection and shows it on the store", async () => {
+    const { api, calls } = fakeApi((c) => {
+      if (c.path === "/api/links/aB3xY9/tag") return { body: { tag: (c.body as { tag: string }).tag } };
+      if (c.path === "/api/links/aB3xY9/store") return { body: { inStore: (c.body as { on: boolean }).on } };
+      return undefined;
+    });
+    const { call } = await mcpClient(api);
+    expect((await call("set_collection", { code: "aB3xY9", collection: "Videos" })).json).toEqual({ tag: "Videos" });
+    expect((await call("set_store_visibility", { code: "aB3xY9", show: true })).json).toEqual({ inStore: true });
+    expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
+      ["PUT", "/api/links/aB3xY9/tag", { tag: "Videos" }],
+      ["PUT", "/api/links/aB3xY9/store", { on: true }],
+    ]);
+  });
+
+  it("reads the store with its collections, and explains a refused collection name", async () => {
+    const store = { slug: "IFTVjD1T", url: "https://xbit.my/s/IFTVjD1T", name: "Night Owl", description: "", open: true, closedByAdmin: false };
+    const { api } = fakeApi((c) =>
+      c.path === "/api/store"
+        ? { body: { store } }
+        : c.path === "/api/store/collections"
+          ? { body: { collections: [{ name: "Videos", items: 2, shown: 1 }] } }
+          : { status: 400, body: { error: { code: "collection_unsafe" } } },
+    );
+    const { call } = await mcpClient(api);
+    expect((await call("get_store")).json).toEqual({ store, collections: [{ name: "Videos", items: 2, shown: 1 }] });
+    expect((await call("set_collection", { code: "aB3xY9", collection: "nope" })).text).toMatch(/can't accept this collection name/);
+  });
+});
+
 describe("error codes", () => {
   it("explain a refused destination by its public reason", async () => {
     const { api } = fakeApi(() => ({ status: 400, body: { error: { code: "host_not_allowed" } } }));
