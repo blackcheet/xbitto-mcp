@@ -134,8 +134,8 @@ describe("create_drama", () => {
     let video = 0;
     const { api, calls } = fakeApi((c: Call) => {
       if (c.path === "/api/payout-addresses") return { body: wallets };
-      if (c.path === "/api/vault/series") return { status: 201, body: { code: "Ser1es" } };
-      if (c.path === "/api/vault/Ser1es/episodes") {
+      if (c.path === "/api/content/series") return { status: 201, body: { code: "Ser1es" } };
+      if (c.path === "/api/content/Ser1es/episodes") {
         const files = (c.body as { files: { name: string }[] }).files;
         return { status: 201, body: { uploads: files.map(() => ({ id: `e${++video}`, upload: grant(`v${video}`) })) } };
       }
@@ -145,11 +145,11 @@ describe("create_drama", () => {
     const started = await call("create_drama", { episodes: dir, title: "Night Train", price: "3", freeCount: 1 });
     expect(started.json).toMatchObject({ code: "Ser1es", files: 3 });
 
-    const create = calls.find((c) => c.path === "/api/vault/series")!;
+    const create = calls.find((c) => c.path === "/api/content/series")!;
     expect(create.body).toMatchObject({ title: "Night Train", price: "3", freeCount: 1, payoutAddressIds: ["w-sol", "w-tron"], coverUrl: null });
     const job = await finished(call, started.json.jobId);
     expect(job).toMatchObject({ state: "done", total: 3, done: 3, failed: [] });
-    expect((calls.find((c) => c.path === "/api/vault/Ser1es/episodes")!.body as { files: { name: string }[] }).files.map((f) => f.name)).toEqual([
+    expect((calls.find((c) => c.path === "/api/content/Ser1es/episodes")!.body as { files: { name: string }[] }).files.map((f) => f.name)).toEqual([
       "EP1.mp4",
       "EP2.mp4",
       "EP10.mp4",
@@ -169,15 +169,15 @@ describe("create_drama", () => {
     const now = Math.floor(Date.now() / 1000);
     const { api, calls } = fakeApi((c: Call) => {
       if (c.path === "/api/payout-addresses") return { body: wallets };
-      if (c.path === "/api/vault/series") return { status: 201, body: { code: "Old1" } };
-      if (c.path === "/api/vault/Old1/episodes") return { status: 201, body: { uploads: [{ id: "e1", upload: { ...grant("stale"), expires: now + 60 } }] } };
-      if (c.path === "/api/vault/Old1/episodes/e1/upload") return { body: { upload: { ...grant("fresh"), expires: now + 21600 } } };
+      if (c.path === "/api/content/series") return { status: 201, body: { code: "Old1" } };
+      if (c.path === "/api/content/Old1/episodes") return { status: 201, body: { uploads: [{ id: "e1", upload: { ...grant("stale"), expires: now + 60 } }] } };
+      if (c.path === "/api/content/Old1/episodes/e1/upload") return { body: { upload: { ...grant("fresh"), expires: now + 21600 } } };
       return undefined;
     });
     const { call } = await mcpClient(api);
     const started = await call("create_drama", { episodes: dir, title: "Resign", price: "1", freeCount: 0 });
     expect((await finished(call, started.json.jobId)).state).toBe("done");
-    expect(calls.some((c) => c.path === "/api/vault/Old1/episodes/e1/upload")).toBe(true);
+    expect(calls.some((c) => c.path === "/api/content/Old1/episodes/e1/upload")).toBe(true);
     expect([...bunny.tus.values()].find((upload) => upload.metadata.title === "Resign · 1")!.headers.videoId).toBe("fresh");
   });
 
@@ -199,10 +199,10 @@ describe("create_gallery", () => {
     await writeFile(join(dir, "10.png"), pngHeader(300, 400));
     const { api, calls } = fakeApi((c) => {
       if (c.path === "/api/payout-addresses") return { body: wallets };
-      if (c.path === "/api/vault/galleries")
+      if (c.path === "/api/content/galleries")
         return { status: 201, body: { code: "Ga11ry", uploads: [{ id: "i1", url: `${bunny.origin}/storage/a` }, { id: "i2", url: `${bunny.origin}/storage/b` }] } };
-      if (c.path === "/api/vault/Ga11ry/images/confirm") return { body: { images: [{ id: "i1", uploaded: true }, { id: "i2", uploaded: true }] } };
-      if (c.path === "/api/vault/Ga11ry/cover") return { status: 204 };
+      if (c.path === "/api/content/Ga11ry/images/confirm") return { body: { images: [{ id: "i1", uploaded: true }, { id: "i2", uploaded: true }] } };
+      if (c.path === "/api/content/Ga11ry/cover") return { status: 204 };
       return undefined;
     });
     const { call } = await mcpClient(api);
@@ -211,14 +211,14 @@ describe("create_gallery", () => {
     const job = await finished(call, started.json.jobId);
     expect(job).toMatchObject({ state: "done", done: 2 });
 
-    const create = calls.find((c) => c.path === "/api/vault/galleries")!.body as { images: unknown[]; payoutAddressIds: string[] };
+    const create = calls.find((c) => c.path === "/api/content/galleries")!.body as { images: unknown[]; payoutAddressIds: string[] };
     expect(create.payoutAddressIds).toEqual(["w-tron"]);
     expect(create.images).toEqual([
       { type: "image/png", size: 97, width: 400, height: 300 },
       { type: "image/png", size: 97, width: 300, height: 400 },
     ]);
     expect(bunny.puts.get("/storage/a")).toEqual({ type: "image/png", bytes: 97 });
-    expect(calls.find((c) => c.path === "/api/vault/Ga11ry/cover")!.body).toEqual({ imageId: "i2" });
+    expect(calls.find((c) => c.path === "/api/content/Ga11ry/cover")!.body).toEqual({ imageId: "i2" });
   });
 });
 
@@ -228,8 +228,8 @@ describe("whoami", () => {
     "/api/credits/summary": { balanceMicro: 4_500_000 },
     "/api/links/quota": { quota: { used: 3, limit: 15 } },
     "/api/payout-addresses": { addresses: [wallets.addresses[1]], rails: [{ chain: "solana", asset: "USDC" }, { chain: "tron", asset: "USDT" }] },
-    "/api/vault/connection": { connection: { libraryId: "1" } },
-    "/api/vault/storage": { storage: null },
+    "/api/content/connection": { connection: { libraryId: "1" } },
+    "/api/content/storage": { storage: null },
     "/api/account/paywalls": { open: true },
     "/api/account/payer-policy": { fees: { baseMicro: 200_000, percentBasisPoints: 500 }, scoringAvailable: false },
     ...over,

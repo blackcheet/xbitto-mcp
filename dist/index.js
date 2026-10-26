@@ -45858,7 +45858,7 @@ function registerContentTools(server, api) {
       const cover = args.coverIndex ?? 0;
       if (cover >= picked.length) throw new Error(`coverIndex ${cover} is past the last picture.`);
       const body = await paywallBody(api, args, { images: described.map((entry) => entry.request), ...args.limitDevices === void 0 ? {} : { limitDevices: args.limitDevices } });
-      const created = await api.post("/api/vault/galleries", body);
+      const created = await api.post("/api/content/galleries", body);
       const job = startJob("gallery", picked.map((file2) => file2.name), async (job2) => {
         job2.code = created.code;
         const queue = described.map((entry, index) => ({ ...entry, grant: created.uploads[index], item: job2.items[index] }));
@@ -45873,13 +45873,13 @@ function registerContentTools(server, api) {
         let images = [];
         for (let attempt = 0; attempt < 4; attempt++) {
           if (attempt > 0) await wait(1500 * attempt);
-          images = (await api.post(`/api/vault/${created.code}/images/confirm`)).images;
+          images = (await api.post(`/api/content/${created.code}/images/confirm`)).images;
           if (expected.every((id) => images.find((image) => image.id === id)?.uploaded !== false)) break;
         }
         const arrived = images.filter((image) => image.uploaded);
         const coverId = created.uploads[cover].id;
         const coverImage = arrived.find((image) => image.id === coverId) ?? arrived[0];
-        if (coverImage) await api.post(`/api/vault/${created.code}/cover`, { imageId: coverImage.id });
+        if (coverImage) await api.post(`/api/content/${created.code}/cover`, { imageId: coverImage.id });
         return `${arrived.length} of ${picked.length} pictures arrived.${arrived.length > 0 ? " The gallery takes orders." : ""}`;
       });
       return started(job, created.code);
@@ -45901,14 +45901,14 @@ function registerContentTools(server, api) {
       const [main2] = await pickFiles([args.video], VIDEO_EXTENSIONS);
       const clip = args.previewClip ? (await pickFiles([args.previewClip], VIDEO_EXTENSIONS))[0] : void 0;
       const body = await paywallBody(api, args, args.limitDevices === void 0 ? {} : { limitDevices: args.limitDevices });
-      const created = await api.post("/api/vault", body);
+      const created = await api.post("/api/content", body);
       const names2 = [main2.name, ...clip ? [`${clip.name} (preview clip)`] : []];
       const job = startJob("video", names2, async (job2) => {
         job2.code = created.code;
         const ok2 = await runItem(job2.items[0], (onPercent) => sendVideo(main2.path, created.upload, args.title, videoType(main2.path), onPercent));
         if (clip) {
           await runItem(job2.items[1], async (onPercent) => {
-            const { upload } = await api.post(`/api/vault/${created.code}/teaser`);
+            const { upload } = await api.post(`/api/content/${created.code}/teaser`);
             await sendVideo(clip.path, upload, `${args.title} (preview)`, videoType(clip.path), onPercent);
           });
         }
@@ -45942,7 +45942,7 @@ function registerContentTools(server, api) {
           coverBlur: args.blurPoster ?? false,
           ...args.limitDevices === void 0 ? {} : { limitDevices: args.limitDevices }
         });
-        const created = await api.post("/api/vault/series", body);
+        const created = await api.post("/api/content/series", body);
         const job = startJob("drama", picked.map((file2) => file2.name), async (job2) => {
           job2.code = created.code;
           return uploadEpisodes(api, job2, created.code, args.title, picked, 1);
@@ -45960,7 +45960,7 @@ function registerContentTools(server, api) {
     },
     handle(async ({ code: code2, episodes }) => {
       const picked = await pickFiles(episodes, VIDEO_EXTENSIONS);
-      const { item } = await api.get(`/api/vault/${code2}`);
+      const { item } = await api.get(`/api/content/${code2}`);
       if (!item.series) throw new Error(`${code2} is not a drama.`);
       if (item.series.total + picked.length > item.series.maxEpisodes) {
         throw new Error(`The drama has ${item.series.total} episodes and holds at most ${item.series.maxEpisodes}.`);
@@ -45995,7 +45995,7 @@ function registerContentTools(server, api) {
       inputSchema: { cursor: external_exports.string().optional() },
       annotations: { readOnlyHint: true }
     },
-    handle(({ cursor }) => api.get(`/api/vault${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`))
+    handle(({ cursor }) => api.get(`/api/content${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`))
   );
   server.registerTool(
     "get_content",
@@ -46005,16 +46005,16 @@ function registerContentTools(server, api) {
       inputSchema: { code },
       annotations: { readOnlyHint: true }
     },
-    handle(({ code: code2 }) => api.get(`/api/vault/${code2}`))
+    handle(({ code: code2 }) => api.get(`/api/content/${code2}`))
   );
 }
 var RESIGN_BEFORE_S = 30 * 60;
-var freshGrant = async (api, code2, episodeId) => (await api.post(`/api/vault/${code2}/episodes/${episodeId}/upload`)).upload;
+var freshGrant = async (api, code2, episodeId) => (await api.post(`/api/content/${code2}/episodes/${episodeId}/upload`)).upload;
 async function uploadEpisodes(api, job, code2, title, picked, first) {
   let uploaded = 0;
   for (let start = 0; start < picked.length; start += EPISODES_PER_REQUEST) {
     const part = picked.slice(start, start + EPISODES_PER_REQUEST);
-    const { uploads } = await api.post(`/api/vault/${code2}/episodes`, {
+    const { uploads } = await api.post(`/api/content/${code2}/episodes`, {
       files: part.map((file2) => ({ name: file2.name }))
     });
     for (const [index, file2] of part.entries()) {
@@ -46039,8 +46039,8 @@ async function readiness(api) {
     api.get("/api/credits/summary"),
     api.get("/api/links/quota"),
     api.get("/api/payout-addresses"),
-    api.get("/api/vault/connection"),
-    api.get("/api/vault/storage"),
+    api.get("/api/content/connection"),
+    api.get("/api/content/storage"),
     api.get("/api/account/paywalls"),
     api.get("/api/account/payer-policy")
   ]);

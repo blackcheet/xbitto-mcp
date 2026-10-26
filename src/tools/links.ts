@@ -24,8 +24,8 @@ export async function readiness(api: Api) {
     api.get<{ balanceMicro: number }>("/api/credits/summary"),
     api.get<Quota>("/api/links/quota"),
     api.get<Wallets>("/api/payout-addresses"),
-    api.get<{ connection: unknown }>("/api/vault/connection"),
-    api.get<{ storage: unknown }>("/api/vault/storage"),
+    api.get<{ connection: unknown }>("/api/content/connection"),
+    api.get<{ storage: unknown }>("/api/content/storage"),
     api.get<{ open: boolean }>("/api/account/paywalls"),
     api.get<PayerPolicy>("/api/account/payer-policy"),
   ]);

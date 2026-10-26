@@ -64,7 +64,7 @@ export function registerContentTools(server: McpServer, api: Api) {
       if (cover >= picked.length) throw new Error(`coverIndex ${cover} is past the last picture.`);
 
       const body = await paywallBody(api, args, { images: described.map((entry) => entry.request), ...(args.limitDevices === undefined ? {} : { limitDevices: args.limitDevices }) });
-      const created = await api.post<{ code: string; uploads: { id: string; url: string }[] }>("/api/vault/galleries", body);
+      const created = await api.post<{ code: string; uploads: { id: string; url: string }[] }>("/api/content/galleries", body);
 
       const job = startJob("gallery", picked.map((file) => file.name), async (job) => {
         job.code = created.code;
@@ -82,13 +82,13 @@ export function registerContentTools(server: McpServer, api: Api) {
         let images: { id: string; uploaded: boolean }[] = [];
         for (let attempt = 0; attempt < 4; attempt++) {
           if (attempt > 0) await wait(1500 * attempt);
-          images = (await api.post<{ images: { id: string; uploaded: boolean }[] }>(`/api/vault/${created.code}/images/confirm`)).images;
+          images = (await api.post<{ images: { id: string; uploaded: boolean }[] }>(`/api/content/${created.code}/images/confirm`)).images;
           if (expected.every((id) => images.find((image) => image.id === id)?.uploaded !== false)) break;
         }
         const arrived = images.filter((image) => image.uploaded);
         const coverId = created.uploads[cover]!.id;
         const coverImage = arrived.find((image) => image.id === coverId) ?? arrived[0];
-        if (coverImage) await api.post(`/api/vault/${created.code}/cover`, { imageId: coverImage.id });
+        if (coverImage) await api.post(`/api/content/${created.code}/cover`, { imageId: coverImage.id });
         return `${arrived.length} of ${picked.length} pictures arrived.${arrived.length > 0 ? " The gallery takes orders." : ""}`;
       });
       return started(job, created.code);
@@ -114,7 +114,7 @@ export function registerContentTools(server: McpServer, api: Api) {
       const [main] = await pickFiles([args.video], VIDEO_EXTENSIONS);
       const clip = args.previewClip ? (await pickFiles([args.previewClip], VIDEO_EXTENSIONS))[0] : undefined;
       const body = await paywallBody(api, args, args.limitDevices === undefined ? {} : { limitDevices: args.limitDevices });
-      const created = await api.post<{ code: string; upload: UploadGrant }>("/api/vault", body);
+      const created = await api.post<{ code: string; upload: UploadGrant }>("/api/content", body);
 
       const names = [main!.name, ...(clip ? [`${clip.name} (preview clip)`] : [])];
       const job = startJob("video", names, async (job) => {
@@ -122,7 +122,7 @@ export function registerContentTools(server: McpServer, api: Api) {
         const ok = await runItem(job.items[0]!, (onPercent) => sendVideo(main!.path, created.upload, args.title, videoType(main!.path), onPercent));
         if (clip) {
           await runItem(job.items[1]!, async (onPercent) => {
-            const { upload } = await api.post<{ upload: UploadGrant }>(`/api/vault/${created.code}/teaser`);
+            const { upload } = await api.post<{ upload: UploadGrant }>(`/api/content/${created.code}/teaser`);
             await sendVideo(clip.path, upload, `${args.title} (preview)`, videoType(clip.path), onPercent);
           });
         }
@@ -163,7 +163,7 @@ export function registerContentTools(server: McpServer, api: Api) {
           coverBlur: args.blurPoster ?? false,
           ...(args.limitDevices === undefined ? {} : { limitDevices: args.limitDevices }),
         });
-        const created = await api.post<{ code: string }>("/api/vault/series", body);
+        const created = await api.post<{ code: string }>("/api/content/series", body);
         const job = startJob("drama", picked.map((file) => file.name), async (job) => {
           job.code = created.code;
           return uploadEpisodes(api, job, created.code, args.title, picked, 1);
@@ -182,7 +182,7 @@ export function registerContentTools(server: McpServer, api: Api) {
     },
     handle(async ({ code, episodes }: { code: string; episodes: string | string[] }) => {
       const picked = await pickFiles(episodes, VIDEO_EXTENSIONS);
-      const { item } = await api.get<{ item: { title: string; series: { total: number; maxEpisodes: number } | null } }>(`/api/vault/${code}`);
+      const { item } = await api.get<{ item: { title: string; series: { total: number; maxEpisodes: number } | null } }>(`/api/content/${code}`);
       if (!item.series) throw new Error(`${code} is not a drama.`);
       if (item.series.total + picked.length > item.series.maxEpisodes) {
         throw new Error(`The drama has ${item.series.total} episodes and holds at most ${item.series.maxEpisodes}.`);
@@ -219,7 +219,7 @@ export function registerContentTools(server: McpServer, api: Api) {
       inputSchema: { cursor: z.string().optional() },
       annotations: { readOnlyHint: true },
     },
-    handle(({ cursor }: { cursor?: string }) => api.get(`/api/vault${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`)),
+    handle(({ cursor }: { cursor?: string }) => api.get(`/api/content${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`)),
   );
 
   server.registerTool(
@@ -230,13 +230,13 @@ export function registerContentTools(server: McpServer, api: Api) {
       inputSchema: { code },
       annotations: { readOnlyHint: true },
     },
-    handle(({ code }: { code: string }) => api.get(`/api/vault/${code}`)),
+    handle(({ code }: { code: string }) => api.get(`/api/content/${code}`)),
   );
 }
 
 const RESIGN_BEFORE_S = 30 * 60;
 const freshGrant = async (api: Api, code: string, episodeId: string) =>
-  (await api.post<{ upload: UploadGrant }>(`/api/vault/${code}/episodes/${episodeId}/upload`)).upload;
+  (await api.post<{ upload: UploadGrant }>(`/api/content/${code}/episodes/${episodeId}/upload`)).upload;
 
 // Episodes in parts of EPISODES_PER_REQUEST, as the dashboard sends them: each part is made, then its
 // files go up one after another, before the next part is asked for. A part that can't be made stops the
@@ -245,7 +245,7 @@ async function uploadEpisodes(api: Api, job: Job, code: string, title: string, p
   let uploaded = 0;
   for (let start = 0; start < picked.length; start += EPISODES_PER_REQUEST) {
     const part = picked.slice(start, start + EPISODES_PER_REQUEST);
-    const { uploads } = await api.post<{ uploads: { id: string; upload: UploadGrant }[] }>(`/api/vault/${code}/episodes`, {
+    const { uploads } = await api.post<{ uploads: { id: string; upload: UploadGrant }[] }>(`/api/content/${code}/episodes`, {
       files: part.map((file) => ({ name: file.name })),
     });
     for (const [index, file] of part.entries()) {
