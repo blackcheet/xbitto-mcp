@@ -6,7 +6,7 @@ import type { Api } from "../api.js";
 import { readCodeLines } from "../files.js";
 import { code, handle, paywallBody, paywallFields, query } from "./common.js";
 
-// Codes: license keys, accounts, proxies, gift cards and the like, sold one or several to an order. Each
+// Codes: accounts, license keys, proxies, gift cards and the like, sold one or several to an order. Each
 // consumer gets codes of their own from the item's stock, which the creator fills.
 
 // The API takes this many codes in one request, each one line of at most this many characters. One call
@@ -140,7 +140,7 @@ export function registerCodesTools(server: McpServer, api: Api) {
     {
       title: "Create Codes Item",
       description:
-        "Sell codes — license keys, accounts, proxies, gift cards — each consumer getting their own from the item's stock. " +
+        "Sell codes — accounts, license keys, proxies, gift cards — each consumer getting their own from the item's stock. " +
         "It is created with its codes: give `codes` or `file`, one code per line (blank lines and repeats dropped, lines over 500 characters skipped and counted), up to 1000 in one call. " +
         "Ask the user for the title, price, the codes and whether there is a redeem link before calling: the redeem link can never be changed, " +
         "and every item counts against today's link allowance even if deleted. Check with whoami that it can be made first.",

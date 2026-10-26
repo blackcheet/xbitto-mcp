@@ -2,7 +2,7 @@
 
 An [MCP](https://modelcontextprotocol.io) server that lets an AI agent (Claude, Cursor, or any MCP client)
 work in your [Xbitto](https://xbitto.com) creator account: create short links and paywall links, sell
-license keys, accounts and other codes by the hundred, and upload galleries, videos and whole dramas
+accounts, license keys and other codes by the hundred, and upload galleries, videos and whole dramas
 (short series in episodes) from your computer.
 
 It runs on your own computer. Files go **straight from your computer to your own Bunny account**, using
@@ -83,7 +83,7 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `set_tag` | Tag a link, Codes item or Content item, or remove its tag |
 | `get_store`, `set_store_visibility` | Your store (My Store) and its tags; show a paid item on it or take it off |
 | `set_paywall` | Sell a link: price, title, description, cover and an optional access code |
-| `create_codes` | Sell codes (license keys, accounts, proxies, gift cards), each consumer getting their own: created with its codes, from a list or a text file |
+| `create_codes` | Sell codes (accounts, license keys, proxies, gift cards), each consumer getting their own: created with its codes, from a list or a text file |
 | `add_codes` | Add codes to an item's stock, up to 1000 in one call, 100 per request |
 | `update_codes` | Change an item's price, title, label, how many codes one order can buy, or its note |
 | `list_codes`, `get_codes` | Your Codes items and how many codes each has left, sold and owed |

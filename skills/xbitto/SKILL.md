@@ -1,6 +1,6 @@
 ---
 name: xbitto
-description: Work in a creator's Xbitto account through the xbitto MCP tools - create short links and paywall links, sell codes (license keys, accounts, proxies, gift cards) in bulk, and upload galleries, videos and dramas (series of episodes) from local files. Use when the user mentions Xbitto, paywall links, license keys, accounts or codes to sell, or uploading episodes, a short drama, videos or a picture set to sell.
+description: Work in a creator's Xbitto account through the xbitto MCP tools - create short links and paywall links, sell codes (accounts, license keys, proxies, gift cards) in bulk, and upload galleries, videos and dramas (series of episodes) from local files. Use when the user mentions Xbitto, paywall links, license keys, accounts or codes to sell, or uploading episodes, a short drama, videos or a picture set to sell.
 ---
 
 # Xbitto
@@ -14,7 +14,7 @@ API key.
 - **Creator**: the account owner (the user). **Consumer**: whoever pays. **Promoter**: sells for a commission.
 - **Gated link**: a link with a paywall. After paying, the consumer gets the destination and, optionally,
   an access code, the same for everyone (an extraction code, a password).
-- **Codes**: an item that sells codes (license keys, accounts as `user:password`, proxies, gift cards). Each
+- **Codes**: an item that sells codes (accounts as `user:password`, license keys, proxies, gift cards). Each
   consumer gets codes of their own from its stock, one per order or up to `maxPerOrder` (at most 50), with an
   optional redeem link and a note shown after payment.
 - **Content**: what the creator sells from their own Bunny account: a gallery (1–20 pictures), a video
@@ -32,7 +32,7 @@ API key.
    not an IP, a local host or an Xbitto short link. Prices are decimal strings (`"5"`, `"4.99"`), in USDT/USDC,
    and each sale costs the Sales Fee shown by `whoami` in credits.
 3. Leave `payoutWalletIds` out unless the user names wallets: the first usable wallet on each network is used.
-4. **Selling codes** (keys, accounts, proxies): `create_codes` makes the item with its codes in one call, so
+4. **Selling codes** (accounts, keys, proxies): `create_codes` makes the item with its codes in one call, so
    ask for the codes (a list or a file path), title, price, an optional `codeLabel` such as "License Key", an
    optional `redeemUrl` (it can never be changed) and an optional `note` first. One code is one line, up to
    500 characters; a login goes on one line as `user:password`. The tool trims, removes repeats and sends 100

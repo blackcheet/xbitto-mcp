@@ -45677,7 +45677,7 @@ function registerCodesTools(server, api) {
     "create_codes",
     {
       title: "Create Codes Item",
-      description: "Sell codes \u2014 license keys, accounts, proxies, gift cards \u2014 each consumer getting their own from the item's stock. It is created with its codes: give `codes` or `file`, one code per line (blank lines and repeats dropped, lines over 500 characters skipped and counted), up to 1000 in one call. Ask the user for the title, price, the codes and whether there is a redeem link before calling: the redeem link can never be changed, and every item counts against today's link allowance even if deleted. Check with whoami that it can be made first.",
+      description: "Sell codes \u2014 accounts, license keys, proxies, gift cards \u2014 each consumer getting their own from the item's stock. It is created with its codes: give `codes` or `file`, one code per line (blank lines and repeats dropped, lines over 500 characters skipped and counted), up to 1000 in one call. Ask the user for the title, price, the codes and whether there is a redeem link before calling: the redeem link can never be changed, and every item counts against today's link allowance even if deleted. Check with whoami that it can be made first.",
       inputSchema: {
         ...itemFields,
         ...codesInput,
@@ -46167,7 +46167,7 @@ function registerLinkTools(server, api) {
     "set_paywall",
     {
       title: "Set Paywall",
-      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. To sell keys, accounts or other codes each consumer gets their own of, use create_codes instead.",
+      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. To sell accounts, keys or other codes each consumer gets their own of, use create_codes instead.",
       inputSchema: {
         code,
         ...paywallFields,
@@ -46247,7 +46247,7 @@ function createServer(api) {
   const server = new McpServer(
     { name: "xbitto", version: true ? "0.4.0" : "dev" },
     {
-      instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (keys, accounts and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
+      instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }
   );
   registerLinkTools(server, api);
