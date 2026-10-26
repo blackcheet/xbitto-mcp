@@ -158,16 +158,14 @@ export function registerLinkTools(server: McpServer, api: Api) {
     {
       title: "Get Store",
       description:
-        "The creator's store (My Store): its public link, name and whether it is open, and its tags with how many items each shows. " +
+        "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. " +
+        "Consumers browse it by type (link, gallery, video, drama) and then by tag. " +
         "Null when the creator has never opened it; opening, closing and naming it are done in the dashboard.",
       annotations: { readOnlyHint: true },
     },
     handle(async () => {
-      const [{ store }, { collections }] = await Promise.all([
-        api.get<{ store: unknown }>("/api/store"),
-        api.get<{ collections: unknown[] }>("/api/store/collections"),
-      ]);
-      return { store, tags: collections };
+      const [{ store }, { tags }] = await Promise.all([api.get<{ store: unknown }>("/api/store"), api.get<{ tags: unknown[] }>("/api/store/tags")]);
+      return { store, tags };
     }),
   );
 

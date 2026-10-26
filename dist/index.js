@@ -36339,8 +36339,8 @@ var MESSAGES = {
   series_full: "A series holds at most 100 episodes.",
   pool_full: "The pool holds at most 1000 unused items.",
   insufficient_stock: "Not that many items are left for one order.",
-  invalid_collection: "A tag can be up to 24 characters and can't be a web address.",
-  collection_unsafe: "Xbitto can't accept this tag. Change it and try again.",
+  invalid_tag: "A tag can be up to 24 characters and can't be a web address.",
+  tag_unsafe: "Xbitto can't accept this tag. Change it and try again.",
   not_found: "Not found. Check the code or id.",
   invalid_input: "The request wasn't valid.",
   code_unavailable: "Xbitto couldn't assign a short code. Try again."
@@ -45708,15 +45708,12 @@ function registerLinkTools(server, api) {
     "get_store",
     {
       title: "Get Store",
-      description: "The creator's store (My Store): its public link, name and whether it is open, and its tags with how many items each shows. Null when the creator has never opened it; opening, closing and naming it are done in the dashboard.",
+      description: "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. Consumers browse it by type (link, gallery, video, drama) and then by tag. Null when the creator has never opened it; opening, closing and naming it are done in the dashboard.",
       annotations: { readOnlyHint: true }
     },
     handle(async () => {
-      const [{ store }, { collections }] = await Promise.all([
-        api.get("/api/store"),
-        api.get("/api/store/collections")
-      ]);
-      return { store, tags: collections };
+      const [{ store }, { tags }] = await Promise.all([api.get("/api/store"), api.get("/api/store/tags")]);
+      return { store, tags };
     })
   );
   server.registerTool(

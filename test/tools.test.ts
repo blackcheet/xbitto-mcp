@@ -224,9 +224,9 @@ describe("the store", () => {
     const { api } = fakeApi((c) =>
       c.path === "/api/store"
         ? { body: { store } }
-        : c.path === "/api/store/collections"
-          ? { body: { collections: [{ name: "Videos", items: 2, shown: 1 }] } }
-          : { status: 400, body: { error: { code: "collection_unsafe" } } },
+        : c.path === "/api/store/tags"
+          ? { body: { tags: [{ name: "Videos", items: 2, shown: 1 }] } }
+          : { status: 400, body: { error: { code: "tag_unsafe" } } },
     );
     const { call } = await mcpClient(api);
     expect((await call("get_store")).json).toEqual({ store, tags: [{ name: "Videos", items: 2, shown: 1 }] });
