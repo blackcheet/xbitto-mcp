@@ -80,8 +80,8 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `list_wallets` | Your payout wallets (paywalls use their ids) |
 | `list_links`, `get_link` | Your links and their paywall settings |
 | `create_link` | A short link to a URL (its destination can't be changed later) |
-| `set_collection` | Put a link or Vault item in a collection, or take it out |
-| `get_store`, `set_store_visibility` | Your store (My Store) and its collections; show a paid item on it or take it off |
+| `set_tag` | Tag a link or Vault item, or remove its tag |
+| `get_store`, `set_store_visibility` | Your store (My Store) and its tags; show a paid item on it or take it off |
 | `set_paywall` | Sell a link: price, title, description, cover, access code or a pool of items, and how many items one order can buy |
 | `add_pool_items` | Add license keys, logins or invite links to a pool, from a list or a text file, 100 per request |
 | `get_pool_stats` | How many pool items are left and used |

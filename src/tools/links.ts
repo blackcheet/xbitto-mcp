@@ -11,8 +11,8 @@ import { code, handle, paywallBody, paywallFields } from "./common.js";
 // The API takes this many pool items in one request, each at most this long.
 export const POOL_ADD_MAX = 100;
 export const POOL_ITEM_MAX_LENGTH = 200;
-// A collection's name, as long as the API takes it.
-export const COLLECTION_MAX_LENGTH = 24;
+// A tag, as long as the API takes it.
+export const TAG_MAX_LENGTH = 24;
 
 // Every line of this file becomes something a consumer can buy, so only a plain list is read: a .txt or
 // .csv file of reasonable size, never whatever file an instruction hidden in a web page names.
@@ -124,7 +124,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
         q: z.string().max(100).optional().describe("Search the short code, destination and paid title."),
         kind: z.enum(["redirect", "paywall"]).optional(),
         status: z.enum(["active", "disabled", "blocked"]).optional(),
-        tag: z.string().optional().describe("Only links in this collection (the API calls a link's collection its tag)."),
+        tag: z.string().optional().describe("Only links with this tag."),
         cursor: z.string().optional(),
       },
       annotations: { readOnlyHint: true },
@@ -139,18 +139,18 @@ export function registerLinkTools(server: McpServer, api: Api) {
   );
 
   server.registerTool(
-    "set_collection",
+    "set_tag",
     {
-      title: "Set Collection",
+      title: "Set Tag",
       description:
-        "Put a link or Vault item in a collection, or take it out with an empty name. A collection groups items in the dashboard " +
-        "and is a tab on the creator's store, where consumers see its name.",
+        "Tag a link or Vault item, or remove its tag with an empty one. A tag groups items in the dashboard and on the creator's " +
+        "store, where consumers see it.",
       inputSchema: {
         code,
-        collection: z.string().max(COLLECTION_MAX_LENGTH).describe(`The collection's name, up to ${COLLECTION_MAX_LENGTH} characters, not a web address; "" for none.`),
+        tag: z.string().max(TAG_MAX_LENGTH).describe(`The tag, up to ${TAG_MAX_LENGTH} characters, not a web address; "" for none.`),
       },
     },
-    handle(({ code, collection }: { code: string; collection: string }) => api.put(`/api/links/${code}/tag`, { tag: collection })),
+    handle(({ code, tag }: { code: string; tag: string }) => api.put(`/api/links/${code}/tag`, { tag })),
   );
 
   server.registerTool(
@@ -158,7 +158,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
     {
       title: "Get Store",
       description:
-        "The creator's store (My Store): its public link, name and whether it is open, and its collections with how many items each shows. " +
+        "The creator's store (My Store): its public link, name and whether it is open, and its tags with how many items each shows. " +
         "Null when the creator has never opened it; opening, closing and naming it are done in the dashboard.",
       annotations: { readOnlyHint: true },
     },
@@ -167,7 +167,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
         api.get<{ store: unknown }>("/api/store"),
         api.get<{ collections: unknown[] }>("/api/store/collections"),
       ]);
-      return { store, collections };
+      return { store, tags: collections };
     }),
   );
 
@@ -177,7 +177,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
       title: "Show in Store",
       description:
         "Show a paid link or Vault item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its " +
-        "title, price, picture and collection public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
+        "title, price, picture and tag public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
       inputSchema: { code, show: z.boolean().describe("true to show it on the store, false to take it off.") },
     },
     handle(({ code, show }: { code: string; show: boolean }) => api.put(`/api/links/${code}/store`, { on: show })),

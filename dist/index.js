@@ -36339,8 +36339,8 @@ var MESSAGES = {
   series_full: "A series holds at most 100 episodes.",
   pool_full: "The pool holds at most 1000 unused items.",
   insufficient_stock: "Not that many items are left for one order.",
-  invalid_collection: "A collection name can be up to 24 characters and can't be a web address.",
-  collection_unsafe: "Xbitto can't accept this collection name. Rename it and try again.",
+  invalid_collection: "A tag can be up to 24 characters and can't be a web address.",
+  collection_unsafe: "Xbitto can't accept this tag. Change it and try again.",
   not_found: "Not found. Check the code or id.",
   invalid_input: "The request wasn't valid.",
   code_unavailable: "Xbitto couldn't assign a short code. Try again."
@@ -45590,7 +45590,7 @@ async function defaultWallets(api) {
 // src/tools/links.ts
 var POOL_ADD_MAX = 100;
 var POOL_ITEM_MAX_LENGTH = 200;
-var COLLECTION_MAX_LENGTH = 24;
+var TAG_MAX_LENGTH = 24;
 var ITEMS_FILE_MAX_BYTES = 2 * 1024 * 1024;
 async function readItemsFile(path) {
   if (![".txt", ".csv"].includes(extname2(path).toLowerCase())) throw new Error("The items file must be a .txt or .csv file.");
@@ -45680,7 +45680,7 @@ function registerLinkTools(server, api) {
         q: external_exports.string().max(100).optional().describe("Search the short code, destination and paid title."),
         kind: external_exports.enum(["redirect", "paywall"]).optional(),
         status: external_exports.enum(["active", "disabled", "blocked"]).optional(),
-        tag: external_exports.string().optional().describe("Only links in this collection (the API calls a link's collection its tag)."),
+        tag: external_exports.string().optional().describe("Only links with this tag."),
         cursor: external_exports.string().optional()
       },
       annotations: { readOnlyHint: true }
@@ -45693,22 +45693,22 @@ function registerLinkTools(server, api) {
     handle(({ code: code2 }) => api.get(`/api/links/${code2}`))
   );
   server.registerTool(
-    "set_collection",
+    "set_tag",
     {
-      title: "Set Collection",
-      description: "Put a link or Vault item in a collection, or take it out with an empty name. A collection groups items in the dashboard and is a tab on the creator's store, where consumers see its name.",
+      title: "Set Tag",
+      description: "Tag a link or Vault item, or remove its tag with an empty one. A tag groups items in the dashboard and on the creator's store, where consumers see it.",
       inputSchema: {
         code,
-        collection: external_exports.string().max(COLLECTION_MAX_LENGTH).describe(`The collection's name, up to ${COLLECTION_MAX_LENGTH} characters, not a web address; "" for none.`)
+        tag: external_exports.string().max(TAG_MAX_LENGTH).describe(`The tag, up to ${TAG_MAX_LENGTH} characters, not a web address; "" for none.`)
       }
     },
-    handle(({ code: code2, collection }) => api.put(`/api/links/${code2}/tag`, { tag: collection }))
+    handle(({ code: code2, tag }) => api.put(`/api/links/${code2}/tag`, { tag }))
   );
   server.registerTool(
     "get_store",
     {
       title: "Get Store",
-      description: "The creator's store (My Store): its public link, name and whether it is open, and its collections with how many items each shows. Null when the creator has never opened it; opening, closing and naming it are done in the dashboard.",
+      description: "The creator's store (My Store): its public link, name and whether it is open, and its tags with how many items each shows. Null when the creator has never opened it; opening, closing and naming it are done in the dashboard.",
       annotations: { readOnlyHint: true }
     },
     handle(async () => {
@@ -45716,14 +45716,14 @@ function registerLinkTools(server, api) {
         api.get("/api/store"),
         api.get("/api/store/collections")
       ]);
-      return { store, collections };
+      return { store, tags: collections };
     })
   );
   server.registerTool(
     "set_store_visibility",
     {
       title: "Show in Store",
-      description: "Show a paid link or Vault item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its title, price, picture and collection public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
+      description: "Show a paid link or Vault item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its title, price, picture and tag public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
       inputSchema: { code, show: external_exports.boolean().describe("true to show it on the store, false to take it off.") }
     },
     handle(({ code: code2, show }) => api.put(`/api/links/${code2}/store`, { on: show }))
