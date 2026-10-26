@@ -2,8 +2,8 @@
 
 An [MCP](https://modelcontextprotocol.io) server that lets an AI agent (Claude, Cursor, or any MCP client)
 work in your [Xbitto](https://xbitto.com) creator account: create short links and paywall links, sell
-license keys, accounts and other codes by the hundred, and upload galleries, videos and whole series of
-episodes from your computer.
+license keys, accounts and other codes by the hundred, and upload galleries, videos and whole dramas
+(short series in episodes) from your computer.
 
 It runs on your own computer. Files go **straight from your computer to your own Bunny account**, using
 upload addresses the Xbitto API signs. They never pass through Xbitto.
@@ -15,7 +15,7 @@ Full docs: [xbitto.com/docs](https://xbitto.com/docs).
 - Node.js 20 or newer
 - An Xbitto account with a verified email and at least one payout wallet
 - An API key: in the Xbitto dashboard, open **AI Agents** and select **Create Key**. Copy it right away; it is shown once.
-- For the Vault: Bunny Stream (videos, series) and/or Bunny Storage (galleries) connected in **Settings**
+- For Content: Bunny Stream (videos, dramas) and/or Bunny Storage (galleries) connected in **Settings**
 
 ## Install
 
@@ -80,7 +80,7 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `list_wallets` | Your payout wallets (paywalls use their ids) |
 | `list_links`, `get_link` | Your links and their paywall settings |
 | `create_link` | A short link to a URL (its destination can't be changed later) |
-| `set_tag` | Tag a link or Vault item, or remove its tag |
+| `set_tag` | Tag a link, Codes item or Content item, or remove its tag |
 | `get_store`, `set_store_visibility` | Your store (My Store) and its tags; show a paid item on it or take it off |
 | `set_paywall` | Sell a link: price, title, description, cover and an optional access code |
 | `create_codes` | Sell codes (license keys, accounts, proxies, gift cards), each consumer getting their own: created with its codes, from a list or a text file |
@@ -89,19 +89,19 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `list_codes`, `get_codes` | Your Codes items and how many codes each has left, sold and owed |
 | `create_gallery` | Sell 1–20 pictures from a folder |
 | `create_video` | Sell a video, with an optional preview clip |
-| `create_series` | Sell up to 100 episodes for one price, first few free |
-| `add_episodes` | Add episodes to the end of a series |
+| `create_drama` | Sell a drama of up to 100 episodes for one price, first few free |
+| `add_episodes` | Add episodes to the end of a drama |
 | `get_upload_job` | Follow an upload running in the background |
-| `list_vault`, `get_vault_item` | Your Vault items and whether they are ready |
+| `list_content`, `get_content` | Your galleries, videos and dramas, and whether they are ready |
 | `list_orders`, `get_order` | Your orders |
 | `confirm_payment`, `reject_payment` | Decide a payment on hold (only when you say so) |
 
 Example prompts:
 
 - "Sell the keys in `keys.txt` as Pro License Keys, 9 USDT each, redeemed at https://example.com/redeem."
-- "Upload the episodes in `D:\Drama\Night Train` as a series called Night Train, 3 USDT, first 2 free."
+- "Upload the episodes in `D:\Drama\Night Train` as a drama called Night Train, 3 USDT, first 2 free."
 
-Uploads run in the background, so a long series doesn't block the agent: it starts the upload and checks
+Uploads run in the background, so a long drama doesn't block the agent: it starts the upload and checks
 progress with `get_upload_job`. Uploads stop if the MCP server stops; what already arrived stays.
 
 ## What a Key Can't Do
@@ -110,7 +110,7 @@ An API key can't add or change payout wallets, connect Bunny, change the passwor
 settings, open, close or rename the store or change its link, buy credits, pay promoters, run paid wallet checks, export or
 delete the account, or create other keys. Do those in the dashboard. Remove a key any time on the **AI Agents** page.
 
-Keep the key secret: anyone who has it can create and change your links and Vault items.
+Keep the key secret: anyone who has it can create and change your links, Codes and Content items.
 
 ## Network
 

@@ -1,6 +1,6 @@
 ---
 name: xbitto
-description: Work in a creator's Xbitto account through the xbitto MCP tools - create short links and paywall links, sell codes (license keys, accounts, proxies, gift cards) in bulk, and upload Vault galleries, videos and series of episodes from local files. Use when the user mentions Xbitto, paywall links, license keys, accounts or codes to sell, or uploading episodes, a short drama, videos or a picture set to sell.
+description: Work in a creator's Xbitto account through the xbitto MCP tools - create short links and paywall links, sell codes (license keys, accounts, proxies, gift cards) in bulk, and upload galleries, videos and dramas (series of episodes) from local files. Use when the user mentions Xbitto, paywall links, license keys, accounts or codes to sell, or uploading episodes, a short drama, videos or a picture set to sell.
 ---
 
 # Xbitto
@@ -17,9 +17,9 @@ API key.
 - **Codes**: an item that sells codes (license keys, accounts as `user:password`, proxies, gift cards). Each
   consumer gets codes of their own from its stock, one per order or up to `maxPerOrder` (at most 50), with an
   optional redeem link and a note shown after payment.
-- **Vault**: content the creator sells from their own Bunny account: a gallery (1–20 pictures), a video
-  (with an optional preview clip), or a series (up to 100 episodes, first few free).
-- **Store** (My Store): one public page of the creator's paid links, Codes and Vault items, by type and then by **tag**.
+- **Content**: what the creator sells from their own Bunny account: a gallery (1–20 pictures), a video
+  (with an optional preview clip), or a **drama** (a short series of up to 100 episodes, first few free).
+- **Store** (My Store): one public page of the creator's paid links, Codes and Content items, by type and then by **tag**.
   Every item is off the store until switched on.
 
 ## How to Work
@@ -39,10 +39,10 @@ API key.
    per request, up to 1000 per call; add more with `add_codes`. An account holds up to 10,000 unsold codes.
    Ask whether one consumer may buy several at once: if so, pass `maxPerOrder` (2–50). The price is per code;
    the Sales Fee is charged once per order, on its total. `get_codes` shows what is left, sold and owed.
-5. **Uploads** (`create_gallery`, `create_video`, `create_series`, `add_episodes`) return a `jobId` at once.
+5. **Uploads** (`create_gallery`, `create_video`, `create_drama`, `add_episodes`) return a `jobId` at once.
    Poll `get_upload_job` every 30 seconds or so and report progress; don't start the same upload twice.
-   After uploading, Bunny encodes videos; `get_vault_item` shows when they are ready.
-6. **Series**: a folder is taken in natural name order (EP2 before EP10). `freeCount` is at most half the
+   After uploading, Bunny encodes videos; `get_content` shows when they are ready.
+6. **Dramas**: a folder is taken in natural name order (EP2 before EP10). `freeCount` is at most half the
    episodes. It takes orders once at least `freeCount + 1` episodes (and at least 2) are ready.
 7. `set_paywall` and `update_codes` replace the settings: to change one field, read the item with `get_link` or
    `get_codes` first and pass the rest back. The access code, unsold codes, the codes an order received and a

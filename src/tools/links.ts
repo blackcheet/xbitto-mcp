@@ -41,7 +41,7 @@ export async function readiness(api: Api) {
   if (linksLeft === 0) missing.push("Today's link allowance is used up (it resets at 00:00 UTC; deleted links count too).");
   if (!paywalls.open) missing.push("Paid content is paused on Xbitto for now: only free links can be created.");
   if (!networks.some((rail) => rail.wallet)) missing.push("No usable payout wallet: add one in the dashboard under Wallet before selling anything.");
-  if (stream.connection === null) missing.push("Bunny Stream isn't connected (needed for videos and series): connect it in the dashboard under Settings.");
+  if (stream.connection === null) missing.push("Bunny Stream isn't connected (needed for videos and dramas): connect it in the dashboard under Settings.");
   if (storage.storage === null) missing.push("Bunny Storage isn't connected (needed for galleries): connect it in the dashboard under Settings.");
   if (credits.balanceMicro <= 0) missing.push("The credit balance is not above 0, so paid links take no orders until credits are bought in the dashboard under Usage.");
 
@@ -62,7 +62,7 @@ export async function readiness(api: Api) {
       codes: canSell,
       gallery: canSell && storage.storage !== null,
       video: canSell && stream.connection !== null,
-      series: canSell && stream.connection !== null,
+      drama: canSell && stream.connection !== null,
     },
     missing,
   };
@@ -119,7 +119,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
     {
       title: "Set Tag",
       description:
-        "Tag a link or Vault item, or remove its tag with an empty one. A tag groups items in the dashboard and on the creator's " +
+        "Tag a link, Codes item or Content item, or remove its tag with an empty one. A tag groups items in the dashboard and on the creator's " +
         "store, where consumers see it.",
       inputSchema: {
         code,
@@ -150,7 +150,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
     {
       title: "Show in Store",
       description:
-        "Show a paid link or Vault item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its " +
+        "Show a paid link, Codes item or Content item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its " +
         "title, price, picture and tag public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
       inputSchema: { code, show: z.boolean().describe("true to show it on the store, false to take it off.") },
     },

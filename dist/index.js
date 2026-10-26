@@ -36336,7 +36336,7 @@ var MESSAGES = {
   invalid_cover_url: "The cover must be an https image URL.",
   invalid_images: "The images aren't valid: 1\u201320 JPEG, PNG, WebP, GIF or AVIF files, each at most 20 MB.",
   screening_unavailable: "Wallet screening isn't available on the platform right now.",
-  series_full: "A series holds at most 100 episodes.",
+  series_full: "A drama holds at most 100 episodes.",
   codes_full: "The account's Codes items hold at most 10,000 unsold codes, all together.",
   codes_required: "A Codes item is created with its codes: give at least one.",
   invalid_tag: "A tag can be up to 24 characters and can't be a web address.",
@@ -45717,219 +45717,6 @@ function registerCodesTools(server, api) {
   );
 }
 
-// src/tools/links.ts
-var TAG_MAX_LENGTH = 24;
-var NETWORK_NAMES = { solana: "Solana", tron: "TRON" };
-var amount = (micro) => String(micro / 1e6);
-async function readiness(api) {
-  const [me, credits, quota, wallets, stream, storage, paywalls, policy] = await Promise.all([
-    api.get("/api/auth/me"),
-    api.get("/api/credits/summary"),
-    api.get("/api/links/quota"),
-    api.get("/api/payout-addresses"),
-    api.get("/api/vault/connection"),
-    api.get("/api/vault/storage"),
-    api.get("/api/account/paywalls"),
-    api.get("/api/account/payer-policy")
-  ]);
-  const { user } = me;
-  const usable = (rail) => wallets.addresses.some((wallet) => wallet.chain === rail.chain && wallet.asset === rail.asset && wallet.blacklistedAt === null);
-  const networks = wallets.rails.map((rail) => ({ network: NETWORK_NAMES[rail.chain] ?? rail.chain, coin: rail.asset, wallet: usable(rail) }));
-  const linksLeft = Math.max(0, quota.quota.limit - quota.quota.used);
-  const missing = [];
-  if (!user.emailVerified) missing.push("The email isn't verified: verify it in the Xbitto dashboard.");
-  if (user.frozen) missing.push("The account is restricted by consumer complaints: nothing new can be created. The user can appeal under Notification in the dashboard.");
-  if (linksLeft === 0) missing.push("Today's link allowance is used up (it resets at 00:00 UTC; deleted links count too).");
-  if (!paywalls.open) missing.push("Paid content is paused on Xbitto for now: only free links can be created.");
-  if (!networks.some((rail) => rail.wallet)) missing.push("No usable payout wallet: add one in the dashboard under Wallet before selling anything.");
-  if (stream.connection === null) missing.push("Bunny Stream isn't connected (needed for videos and series): connect it in the dashboard under Settings.");
-  if (storage.storage === null) missing.push("Bunny Storage isn't connected (needed for galleries): connect it in the dashboard under Settings.");
-  if (credits.balanceMicro <= 0) missing.push("The credit balance is not above 0, so paid links take no orders until credits are bought in the dashboard under Usage.");
-  const canCreate = user.emailVerified && !user.frozen && linksLeft > 0;
-  const canSell = canCreate && paywalls.open && networks.some((rail) => rail.wallet);
-  return {
-    account: { email: user.email, emailVerified: user.emailVerified, restricted: user.frozen },
-    linksToday: { used: quota.quota.used, limit: quota.quota.limit, left: linksLeft },
-    credits: amount(credits.balanceMicro),
-    // Taken from the creator's credits each time a consumer's payment is delivered.
-    salesFee: `${amount(policy.fees.baseMicro)} + ${policy.fees.percentBasisPoints / 100}% of the price`,
-    payoutNetworks: networks,
-    bunny: { stream: stream.connection !== null, storage: storage.storage !== null },
-    walletScreening: policy.scoringAvailable,
-    canCreate: {
-      freeLink: canCreate,
-      gatedLink: canSell,
-      codes: canSell,
-      gallery: canSell && storage.storage !== null,
-      video: canSell && stream.connection !== null,
-      series: canSell && stream.connection !== null
-    },
-    missing
-  };
-}
-function registerLinkTools(server, api) {
-  server.registerTool(
-    "whoami",
-    {
-      title: "Who Am I",
-      description: "The Xbitto account this API key belongs to and what it can create right now: links left today, payout wallets, Bunny connections, credits and the Sales Fee. Call it before creating anything; `missing` says what the user must fix in the dashboard first.",
-      annotations: { readOnlyHint: true }
-    },
-    handle(() => readiness(api))
-  );
-  server.registerTool(
-    "list_wallets",
-    {
-      title: "List Payout Wallets",
-      description: "The account's payout wallets. Paywalls take their ids (one per network). Wallets can only be added in the dashboard.",
-      annotations: { readOnlyHint: true }
-    },
-    handle(() => api.get("/api/payout-addresses"))
-  );
-  server.registerTool(
-    "list_links",
-    {
-      title: "List Links",
-      description: "The account's links, newest first, ten a page. Pass nextCursor back as cursor for the next page.",
-      inputSchema: {
-        q: external_exports.string().max(100).optional().describe("Search the short code, destination and paid title."),
-        kind: external_exports.enum(["redirect", "paywall"]).optional(),
-        status: external_exports.enum(["active", "disabled", "blocked"]).optional(),
-        tag: external_exports.string().optional().describe("Only links with this tag."),
-        cursor: external_exports.string().optional()
-      },
-      annotations: { readOnlyHint: true }
-    },
-    handle((args) => api.get(`/api/links${query(args)}`))
-  );
-  server.registerTool(
-    "get_link",
-    { title: "Get Link", description: "One link with its paywall settings.", inputSchema: { code }, annotations: { readOnlyHint: true } },
-    handle(({ code: code2 }) => api.get(`/api/links/${code2}`))
-  );
-  server.registerTool(
-    "set_tag",
-    {
-      title: "Set Tag",
-      description: "Tag a link or Vault item, or remove its tag with an empty one. A tag groups items in the dashboard and on the creator's store, where consumers see it.",
-      inputSchema: {
-        code,
-        tag: external_exports.string().max(TAG_MAX_LENGTH).describe(`The tag, up to ${TAG_MAX_LENGTH} characters, not a web address; "" for none.`)
-      }
-    },
-    handle(({ code: code2, tag }) => api.put(`/api/links/${code2}/tag`, { tag }))
-  );
-  server.registerTool(
-    "get_store",
-    {
-      title: "Get Store",
-      description: "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. Consumers browse it by type (link, codes, gallery, video, drama) and then by tag. Null when the creator has never opened it; opening, closing, naming it and changing its link are done in the dashboard.",
-      annotations: { readOnlyHint: true }
-    },
-    handle(async () => {
-      const [{ store }, { tags }] = await Promise.all([api.get("/api/store"), api.get("/api/store/tags")]);
-      return { store, tags };
-    })
-  );
-  server.registerTool(
-    "set_store_visibility",
-    {
-      title: "Show in Store",
-      description: "Show a paid link or Vault item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its title, price, picture and tag public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
-      inputSchema: { code, show: external_exports.boolean().describe("true to show it on the store, false to take it off.") }
-    },
-    handle(({ code: code2, show }) => api.put(`/api/links/${code2}/store`, { on: show }))
-  );
-  server.registerTool(
-    "create_link",
-    {
-      title: "Create Link",
-      description: "Create a short link to a destination URL. Its destination can never be changed afterwards, and every link counts against today's allowance even if deleted, so confirm the exact URL with the user first. To sell it, call set_paywall on it next: check with whoami that a Gated link can be made before creating the link.",
-      inputSchema: {
-        targetUrl: external_exports.string().url().max(2048).describe("The destination: a public http or https address, up to 2048 characters. Not an IP address, a local host, a URL with a username or password, or an Xbitto short link.")
-      }
-    },
-    handle(({ targetUrl }) => api.post("/api/links", { targetUrl }))
-  );
-  server.registerTool(
-    "set_paywall",
-    {
-      title: "Set Paywall",
-      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. To sell keys, accounts or other codes each consumer gets their own of, use create_codes instead.",
-      inputSchema: {
-        code,
-        ...paywallFields,
-        coverUrl: external_exports.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
-        blurCover: external_exports.boolean().optional().describe("Blur the cover on the landing page."),
-        accessCode: external_exports.string().max(500).optional().describe('The code every consumer gets with the link; "" for none. Left out: the one saved is kept.')
-      }
-    },
-    handle(
-      async (args) => {
-        const body = await paywallBody(api, args, {
-          coverUrl: args.coverUrl ?? null,
-          coverBlur: args.blurCover ?? false,
-          ...args.accessCode === void 0 ? {} : { accessCode: args.accessCode }
-        });
-        return api.post(`/api/links/${args.code}/paywall`, body);
-      }
-    )
-  );
-}
-
-// src/tools/orders.ts
-var orderId = external_exports.string().regex(/^[A-Za-z0-9_-]{8,64}$/).describe("The order id.");
-function registerOrderTools(server, api) {
-  server.registerTool(
-    "list_orders",
-    {
-      title: "List Orders",
-      description: "The account's orders, newest first, ten a page. 'hold' are payments waiting for the creator's decision (confirm_payment / reject_payment).",
-      inputSchema: {
-        status: external_exports.enum(["all", "pending", "hold", "delivered", "expired", "rejected"]).optional(),
-        cursor: external_exports.string().optional()
-      },
-      annotations: { readOnlyHint: true }
-    },
-    handle(({ status, cursor }) => {
-      const search = new URLSearchParams();
-      if (status) search.set("status", status);
-      if (cursor) search.set("cursor", cursor);
-      return api.get(`/api/orders${search.size ? `?${search}` : ""}`);
-    })
-  );
-  server.registerTool(
-    "get_order",
-    {
-      title: "Get Order",
-      description: "One order, with the payment under review if there is one. For a Codes item, `order.quantity` is how many codes were bought and `codes.owed` how many its stock still owes (add_codes serves them); the codes themselves are never shown to an API key.",
-      inputSchema: { orderId },
-      annotations: { readOnlyHint: true }
-    },
-    handle(({ orderId: orderId2 }) => api.get(`/api/orders/${orderId2}`))
-  );
-  server.registerTool(
-    "confirm_payment",
-    {
-      title: "Confirm Payment",
-      description: "Confirm that a payment on hold belongs to this order: the consumer gets what they bought and the sales fee is charged. Only do this after the creator has said so; it can't be undone.",
-      inputSchema: { orderId },
-      annotations: { destructiveHint: true }
-    },
-    handle(({ orderId: orderId2 }) => api.post(`/api/orders/${orderId2}/confirm`))
-  );
-  server.registerTool(
-    "reject_payment",
-    {
-      title: "Reject Payment",
-      description: "Reject a payment on hold: the order is not delivered. Only do this after the creator has said so; it can't be undone.",
-      inputSchema: { orderId },
-      annotations: { destructiveHint: true }
-    },
-    handle(({ orderId: orderId2 }) => api.post(`/api/orders/${orderId2}/reject`))
-  );
-}
-
 // src/jobs.ts
 import { randomUUID } from "node:crypto";
 var KEEP = 20;
@@ -46029,9 +45816,9 @@ async function sendImage(url2, path, type, fetcher = fetch) {
   if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).${res.status === 403 ? ` ${BUNNY_REGIONS}` : ""}`);
 }
 
-// src/tools/vault.ts
+// src/tools/content.ts
 var GALLERY_MAX = 20;
-var SERIES_MAX_EPISODES = 100;
+var DRAMA_MAX_EPISODES = 100;
 var EPISODES_PER_REQUEST = 20;
 var IMAGE_CONCURRENCY = 3;
 var files = external_exports.union([external_exports.string(), external_exports.array(external_exports.string()).min(1)]).describe("A folder (its files in natural name order: EP2 before EP10) or a list of file paths (kept in the order given).");
@@ -46043,7 +45830,7 @@ var started = (job, code2, extra = {}) => ({
   next: "Uploading in the background. Call get_upload_job with jobId to follow it.",
   ...extra
 });
-function registerVaultTools(server, api) {
+function registerContentTools(server, api) {
   server.registerTool(
     "create_gallery",
     {
@@ -46125,16 +45912,16 @@ function registerVaultTools(server, api) {
             await sendVideo(clip.path, upload, `${args.title} (preview)`, videoType(clip.path), onPercent);
           });
         }
-        return ok2 ? "Uploaded. Bunny is encoding it; the item takes orders once it is ready (check with get_vault_item)." : null;
+        return ok2 ? "Uploaded. Bunny is encoding it; the item takes orders once it is ready (check with get_content)." : null;
       });
       return started(job, created.code);
     })
   );
   server.registerTool(
-    "create_series",
+    "create_drama",
     {
-      title: "Create Series",
-      description: "Sell a series of episodes (a short drama or web series) for one price, with the first few free. Up to 100 episodes from this computer, numbered in the order given (a folder: natural name order). Files go straight to the creator's Bunny Stream library. It takes orders once at least freeCount + 1 episodes (and at least 2) are ready. Ask the user for the episodes, the title, the price and how many are free before calling.",
+      title: "Create Drama",
+      description: "Sell a drama (a short series in episodes) for one price, with the first few episodes free. Up to 100 episodes from this computer, numbered in the order given (a folder: natural name order). Files go straight to the creator's Bunny Stream library. It takes orders once at least freeCount + 1 episodes (and at least 2) are ready. Ask the user for the episodes, the title, the price and how many are free before calling.",
       inputSchema: {
         episodes: files,
         ...paywallFields,
@@ -46147,7 +45934,7 @@ function registerVaultTools(server, api) {
     handle(
       async (args) => {
         const picked = await pickFiles(args.episodes, VIDEO_EXTENSIONS);
-        if (picked.length > SERIES_MAX_EPISODES) throw new Error(`A series holds at most ${SERIES_MAX_EPISODES} episodes; got ${picked.length}.`);
+        if (picked.length > DRAMA_MAX_EPISODES) throw new Error(`A drama holds at most ${DRAMA_MAX_EPISODES} episodes; got ${picked.length}.`);
         if (args.freeCount > Math.floor(picked.length / 2)) throw new Error(`freeCount can be at most half of the episodes (${Math.floor(picked.length / 2)}).`);
         const body = await paywallBody(api, args, {
           freeCount: args.freeCount,
@@ -46156,7 +45943,7 @@ function registerVaultTools(server, api) {
           ...args.limitDevices === void 0 ? {} : { limitDevices: args.limitDevices }
         });
         const created = await api.post("/api/vault/series", body);
-        const job = startJob("series", picked.map((file2) => file2.name), async (job2) => {
+        const job = startJob("drama", picked.map((file2) => file2.name), async (job2) => {
           job2.code = created.code;
           return uploadEpisodes(api, job2, created.code, args.title, picked, 1);
         });
@@ -46168,15 +45955,15 @@ function registerVaultTools(server, api) {
     "add_episodes",
     {
       title: "Add Episodes",
-      description: "Add episodes to the end of an existing series, numbered after the ones it has. People who bought it see them too.",
+      description: "Add episodes to the end of an existing drama, numbered after the ones it has. People who bought it see them too.",
       inputSchema: { code, episodes: files }
     },
     handle(async ({ code: code2, episodes }) => {
       const picked = await pickFiles(episodes, VIDEO_EXTENSIONS);
       const { item } = await api.get(`/api/vault/${code2}`);
-      if (!item.series) throw new Error(`${code2} is not a series.`);
+      if (!item.series) throw new Error(`${code2} is not a drama.`);
       if (item.series.total + picked.length > item.series.maxEpisodes) {
-        throw new Error(`The series has ${item.series.total} episodes and holds at most ${item.series.maxEpisodes}.`);
+        throw new Error(`The drama has ${item.series.total} episodes and holds at most ${item.series.maxEpisodes}.`);
       }
       const job = startJob("episodes", picked.map((file2) => file2.name), async (job2) => {
         job2.code = code2;
@@ -46189,7 +45976,7 @@ function registerVaultTools(server, api) {
     "get_upload_job",
     {
       title: "Get Upload Job",
-      description: "How an upload started by create_gallery, create_video, create_series or add_episodes is going. Without jobId: the recent jobs.",
+      description: "How an upload started by create_gallery, create_video, create_drama or add_episodes is going. Without jobId: the recent jobs.",
       inputSchema: { jobId: external_exports.string().optional() },
       annotations: { readOnlyHint: true }
     },
@@ -46201,20 +45988,20 @@ function registerVaultTools(server, api) {
     })
   );
   server.registerTool(
-    "list_vault",
+    "list_content",
     {
-      title: "List Vault",
-      description: "The account's Vault items (galleries, videos, series), newest first, ten a page.",
+      title: "List Content",
+      description: "The account's Content items (galleries, videos, dramas), newest first, ten a page.",
       inputSchema: { cursor: external_exports.string().optional() },
       annotations: { readOnlyHint: true }
     },
     handle(({ cursor }) => api.get(`/api/vault${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`))
   );
   server.registerTool(
-    "get_vault_item",
+    "get_content",
     {
-      title: "Get Vault Item",
-      description: "One Vault item: its state (uploading, processing, ready), paywall and, for a series, how many episodes are ready.",
+      title: "Get Content Item",
+      description: "One Content item: its state (uploading, processing, ready), paywall and, for a drama, how many episodes are ready.",
       inputSchema: { code },
       annotations: { readOnlyHint: true }
     },
@@ -46239,7 +46026,220 @@ async function uploadEpisodes(api, job, code2, title, picked, first) {
       if (ok2) uploaded++;
     }
   }
-  return `${uploaded} of ${picked.length} episodes uploaded. Bunny encodes each one; check get_vault_item for how many are ready.`;
+  return `${uploaded} of ${picked.length} episodes uploaded. Bunny encodes each one; check get_content for how many are ready.`;
+}
+
+// src/tools/links.ts
+var TAG_MAX_LENGTH = 24;
+var NETWORK_NAMES = { solana: "Solana", tron: "TRON" };
+var amount = (micro) => String(micro / 1e6);
+async function readiness(api) {
+  const [me, credits, quota, wallets, stream, storage, paywalls, policy] = await Promise.all([
+    api.get("/api/auth/me"),
+    api.get("/api/credits/summary"),
+    api.get("/api/links/quota"),
+    api.get("/api/payout-addresses"),
+    api.get("/api/vault/connection"),
+    api.get("/api/vault/storage"),
+    api.get("/api/account/paywalls"),
+    api.get("/api/account/payer-policy")
+  ]);
+  const { user } = me;
+  const usable = (rail) => wallets.addresses.some((wallet) => wallet.chain === rail.chain && wallet.asset === rail.asset && wallet.blacklistedAt === null);
+  const networks = wallets.rails.map((rail) => ({ network: NETWORK_NAMES[rail.chain] ?? rail.chain, coin: rail.asset, wallet: usable(rail) }));
+  const linksLeft = Math.max(0, quota.quota.limit - quota.quota.used);
+  const missing = [];
+  if (!user.emailVerified) missing.push("The email isn't verified: verify it in the Xbitto dashboard.");
+  if (user.frozen) missing.push("The account is restricted by consumer complaints: nothing new can be created. The user can appeal under Notification in the dashboard.");
+  if (linksLeft === 0) missing.push("Today's link allowance is used up (it resets at 00:00 UTC; deleted links count too).");
+  if (!paywalls.open) missing.push("Paid content is paused on Xbitto for now: only free links can be created.");
+  if (!networks.some((rail) => rail.wallet)) missing.push("No usable payout wallet: add one in the dashboard under Wallet before selling anything.");
+  if (stream.connection === null) missing.push("Bunny Stream isn't connected (needed for videos and dramas): connect it in the dashboard under Settings.");
+  if (storage.storage === null) missing.push("Bunny Storage isn't connected (needed for galleries): connect it in the dashboard under Settings.");
+  if (credits.balanceMicro <= 0) missing.push("The credit balance is not above 0, so paid links take no orders until credits are bought in the dashboard under Usage.");
+  const canCreate = user.emailVerified && !user.frozen && linksLeft > 0;
+  const canSell = canCreate && paywalls.open && networks.some((rail) => rail.wallet);
+  return {
+    account: { email: user.email, emailVerified: user.emailVerified, restricted: user.frozen },
+    linksToday: { used: quota.quota.used, limit: quota.quota.limit, left: linksLeft },
+    credits: amount(credits.balanceMicro),
+    // Taken from the creator's credits each time a consumer's payment is delivered.
+    salesFee: `${amount(policy.fees.baseMicro)} + ${policy.fees.percentBasisPoints / 100}% of the price`,
+    payoutNetworks: networks,
+    bunny: { stream: stream.connection !== null, storage: storage.storage !== null },
+    walletScreening: policy.scoringAvailable,
+    canCreate: {
+      freeLink: canCreate,
+      gatedLink: canSell,
+      codes: canSell,
+      gallery: canSell && storage.storage !== null,
+      video: canSell && stream.connection !== null,
+      drama: canSell && stream.connection !== null
+    },
+    missing
+  };
+}
+function registerLinkTools(server, api) {
+  server.registerTool(
+    "whoami",
+    {
+      title: "Who Am I",
+      description: "The Xbitto account this API key belongs to and what it can create right now: links left today, payout wallets, Bunny connections, credits and the Sales Fee. Call it before creating anything; `missing` says what the user must fix in the dashboard first.",
+      annotations: { readOnlyHint: true }
+    },
+    handle(() => readiness(api))
+  );
+  server.registerTool(
+    "list_wallets",
+    {
+      title: "List Payout Wallets",
+      description: "The account's payout wallets. Paywalls take their ids (one per network). Wallets can only be added in the dashboard.",
+      annotations: { readOnlyHint: true }
+    },
+    handle(() => api.get("/api/payout-addresses"))
+  );
+  server.registerTool(
+    "list_links",
+    {
+      title: "List Links",
+      description: "The account's links, newest first, ten a page. Pass nextCursor back as cursor for the next page.",
+      inputSchema: {
+        q: external_exports.string().max(100).optional().describe("Search the short code, destination and paid title."),
+        kind: external_exports.enum(["redirect", "paywall"]).optional(),
+        status: external_exports.enum(["active", "disabled", "blocked"]).optional(),
+        tag: external_exports.string().optional().describe("Only links with this tag."),
+        cursor: external_exports.string().optional()
+      },
+      annotations: { readOnlyHint: true }
+    },
+    handle((args) => api.get(`/api/links${query(args)}`))
+  );
+  server.registerTool(
+    "get_link",
+    { title: "Get Link", description: "One link with its paywall settings.", inputSchema: { code }, annotations: { readOnlyHint: true } },
+    handle(({ code: code2 }) => api.get(`/api/links/${code2}`))
+  );
+  server.registerTool(
+    "set_tag",
+    {
+      title: "Set Tag",
+      description: "Tag a link, Codes item or Content item, or remove its tag with an empty one. A tag groups items in the dashboard and on the creator's store, where consumers see it.",
+      inputSchema: {
+        code,
+        tag: external_exports.string().max(TAG_MAX_LENGTH).describe(`The tag, up to ${TAG_MAX_LENGTH} characters, not a web address; "" for none.`)
+      }
+    },
+    handle(({ code: code2, tag }) => api.put(`/api/links/${code2}/tag`, { tag }))
+  );
+  server.registerTool(
+    "get_store",
+    {
+      title: "Get Store",
+      description: "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. Consumers browse it by type (link, codes, gallery, video, drama) and then by tag. Null when the creator has never opened it; opening, closing, naming it and changing its link are done in the dashboard.",
+      annotations: { readOnlyHint: true }
+    },
+    handle(async () => {
+      const [{ store }, { tags }] = await Promise.all([api.get("/api/store"), api.get("/api/store/tags")]);
+      return { store, tags };
+    })
+  );
+  server.registerTool(
+    "set_store_visibility",
+    {
+      title: "Show in Store",
+      description: "Show a paid link, Codes item or Content item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its title, price, picture and tag public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
+      inputSchema: { code, show: external_exports.boolean().describe("true to show it on the store, false to take it off.") }
+    },
+    handle(({ code: code2, show }) => api.put(`/api/links/${code2}/store`, { on: show }))
+  );
+  server.registerTool(
+    "create_link",
+    {
+      title: "Create Link",
+      description: "Create a short link to a destination URL. Its destination can never be changed afterwards, and every link counts against today's allowance even if deleted, so confirm the exact URL with the user first. To sell it, call set_paywall on it next: check with whoami that a Gated link can be made before creating the link.",
+      inputSchema: {
+        targetUrl: external_exports.string().url().max(2048).describe("The destination: a public http or https address, up to 2048 characters. Not an IP address, a local host, a URL with a username or password, or an Xbitto short link.")
+      }
+    },
+    handle(({ targetUrl }) => api.post("/api/links", { targetUrl }))
+  );
+  server.registerTool(
+    "set_paywall",
+    {
+      title: "Set Paywall",
+      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. To sell keys, accounts or other codes each consumer gets their own of, use create_codes instead.",
+      inputSchema: {
+        code,
+        ...paywallFields,
+        coverUrl: external_exports.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
+        blurCover: external_exports.boolean().optional().describe("Blur the cover on the landing page."),
+        accessCode: external_exports.string().max(500).optional().describe('The code every consumer gets with the link; "" for none. Left out: the one saved is kept.')
+      }
+    },
+    handle(
+      async (args) => {
+        const body = await paywallBody(api, args, {
+          coverUrl: args.coverUrl ?? null,
+          coverBlur: args.blurCover ?? false,
+          ...args.accessCode === void 0 ? {} : { accessCode: args.accessCode }
+        });
+        return api.post(`/api/links/${args.code}/paywall`, body);
+      }
+    )
+  );
+}
+
+// src/tools/orders.ts
+var orderId = external_exports.string().regex(/^[A-Za-z0-9_-]{8,64}$/).describe("The order id.");
+function registerOrderTools(server, api) {
+  server.registerTool(
+    "list_orders",
+    {
+      title: "List Orders",
+      description: "The account's orders, newest first, ten a page. 'hold' are payments waiting for the creator's decision (confirm_payment / reject_payment).",
+      inputSchema: {
+        status: external_exports.enum(["all", "pending", "hold", "delivered", "expired", "rejected"]).optional(),
+        cursor: external_exports.string().optional()
+      },
+      annotations: { readOnlyHint: true }
+    },
+    handle(({ status, cursor }) => {
+      const search = new URLSearchParams();
+      if (status) search.set("status", status);
+      if (cursor) search.set("cursor", cursor);
+      return api.get(`/api/orders${search.size ? `?${search}` : ""}`);
+    })
+  );
+  server.registerTool(
+    "get_order",
+    {
+      title: "Get Order",
+      description: "One order, with the payment under review if there is one. For a Codes item, `order.quantity` is how many codes were bought and `codes.owed` how many its stock still owes (add_codes serves them); the codes themselves are never shown to an API key.",
+      inputSchema: { orderId },
+      annotations: { readOnlyHint: true }
+    },
+    handle(({ orderId: orderId2 }) => api.get(`/api/orders/${orderId2}`))
+  );
+  server.registerTool(
+    "confirm_payment",
+    {
+      title: "Confirm Payment",
+      description: "Confirm that a payment on hold belongs to this order: the consumer gets what they bought and the sales fee is charged. Only do this after the creator has said so; it can't be undone.",
+      inputSchema: { orderId },
+      annotations: { destructiveHint: true }
+    },
+    handle(({ orderId: orderId2 }) => api.post(`/api/orders/${orderId2}/confirm`))
+  );
+  server.registerTool(
+    "reject_payment",
+    {
+      title: "Reject Payment",
+      description: "Reject a payment on hold: the order is not delivered. Only do this after the creator has said so; it can't be undone.",
+      inputSchema: { orderId },
+      annotations: { destructiveHint: true }
+    },
+    handle(({ orderId: orderId2 }) => api.post(`/api/orders/${orderId2}/reject`))
+  );
 }
 
 // src/server.ts
@@ -46247,12 +46247,12 @@ function createServer(api) {
   const server = new McpServer(
     { name: "xbitto", version: true ? "0.4.0" : "dev" },
     {
-      instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (keys, accounts and the like, each consumer getting their own), and Vault galleries, videos and series. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
+      instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (keys, accounts and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }
   );
   registerLinkTools(server, api);
   registerCodesTools(server, api);
-  registerVaultTools(server, api);
+  registerContentTools(server, api);
   registerOrderTools(server, api);
   return server;
 }

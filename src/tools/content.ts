@@ -6,12 +6,13 @@ import { getJob, jobSummary, listJobs, runItem, startJob, type Job } from "../jo
 import { sendImage, sendVideo, type UploadGrant } from "../uploads.js";
 import { code, handle, paywallBody, paywallFields } from "./common.js";
 
-// Vault items: galleries in the creator's Bunny Storage zone, videos and series in their Bunny Stream
-// library. Each tool creates the item first, so a refusal (a bad price, Bunny not connected) comes back
-// at once; the files then go up in a background job the agent follows with get_upload_job.
+// Content: galleries in the creator's Bunny Storage zone, videos and dramas (short series in episodes) in
+// their Bunny Stream library. Each tool creates the item first, so a refusal (a bad price, Bunny not
+// connected) comes back at once; the files then go up in a background job the agent follows with
+// get_upload_job.
 
 export const GALLERY_MAX = 20;
-export const SERIES_MAX_EPISODES = 100;
+export const DRAMA_MAX_EPISODES = 100;
 // Episodes made in one request, the API's limit.
 export const EPISODES_PER_REQUEST = 20;
 // Pictures sent at once.
@@ -31,7 +32,7 @@ const started = (job: Job, code: string, extra: Record<string, unknown> = {}) =>
   ...extra,
 });
 
-export function registerVaultTools(server: McpServer, api: Api) {
+export function registerContentTools(server: McpServer, api: Api) {
   server.registerTool(
     "create_gallery",
     {
@@ -125,18 +126,18 @@ export function registerVaultTools(server: McpServer, api: Api) {
             await sendVideo(clip.path, upload, `${args.title} (preview)`, videoType(clip.path), onPercent);
           });
         }
-        return ok ? "Uploaded. Bunny is encoding it; the item takes orders once it is ready (check with get_vault_item)." : null;
+        return ok ? "Uploaded. Bunny is encoding it; the item takes orders once it is ready (check with get_content)." : null;
       });
       return started(job, created.code);
     }),
   );
 
   server.registerTool(
-    "create_series",
+    "create_drama",
     {
-      title: "Create Series",
+      title: "Create Drama",
       description:
-        "Sell a series of episodes (a short drama or web series) for one price, with the first few free. Up to 100 episodes from this computer, " +
+        "Sell a drama (a short series in episodes) for one price, with the first few episodes free. Up to 100 episodes from this computer, " +
         "numbered in the order given (a folder: natural name order). Files go straight to the creator's Bunny Stream library. " +
         "It takes orders once at least freeCount + 1 episodes (and at least 2) are ready. " +
         "Ask the user for the episodes, the title, the price and how many are free before calling.",
@@ -154,7 +155,7 @@ export function registerVaultTools(server: McpServer, api: Api) {
         args: { episodes: string | string[]; freeCount: number; posterUrl?: string; blurPoster?: boolean; limitDevices?: boolean } & Parameters<typeof paywallBody>[1],
       ) => {
         const picked = await pickFiles(args.episodes, VIDEO_EXTENSIONS);
-        if (picked.length > SERIES_MAX_EPISODES) throw new Error(`A series holds at most ${SERIES_MAX_EPISODES} episodes; got ${picked.length}.`);
+        if (picked.length > DRAMA_MAX_EPISODES) throw new Error(`A drama holds at most ${DRAMA_MAX_EPISODES} episodes; got ${picked.length}.`);
         if (args.freeCount > Math.floor(picked.length / 2)) throw new Error(`freeCount can be at most half of the episodes (${Math.floor(picked.length / 2)}).`);
         const body = await paywallBody(api, args, {
           freeCount: args.freeCount,
@@ -163,7 +164,7 @@ export function registerVaultTools(server: McpServer, api: Api) {
           ...(args.limitDevices === undefined ? {} : { limitDevices: args.limitDevices }),
         });
         const created = await api.post<{ code: string }>("/api/vault/series", body);
-        const job = startJob("series", picked.map((file) => file.name), async (job) => {
+        const job = startJob("drama", picked.map((file) => file.name), async (job) => {
           job.code = created.code;
           return uploadEpisodes(api, job, created.code, args.title, picked, 1);
         });
@@ -176,15 +177,15 @@ export function registerVaultTools(server: McpServer, api: Api) {
     "add_episodes",
     {
       title: "Add Episodes",
-      description: "Add episodes to the end of an existing series, numbered after the ones it has. People who bought it see them too.",
+      description: "Add episodes to the end of an existing drama, numbered after the ones it has. People who bought it see them too.",
       inputSchema: { code, episodes: files },
     },
     handle(async ({ code, episodes }: { code: string; episodes: string | string[] }) => {
       const picked = await pickFiles(episodes, VIDEO_EXTENSIONS);
       const { item } = await api.get<{ item: { title: string; series: { total: number; maxEpisodes: number } | null } }>(`/api/vault/${code}`);
-      if (!item.series) throw new Error(`${code} is not a series.`);
+      if (!item.series) throw new Error(`${code} is not a drama.`);
       if (item.series.total + picked.length > item.series.maxEpisodes) {
-        throw new Error(`The series has ${item.series.total} episodes and holds at most ${item.series.maxEpisodes}.`);
+        throw new Error(`The drama has ${item.series.total} episodes and holds at most ${item.series.maxEpisodes}.`);
       }
       const job = startJob("episodes", picked.map((file) => file.name), async (job) => {
         job.code = code;
@@ -198,7 +199,7 @@ export function registerVaultTools(server: McpServer, api: Api) {
     "get_upload_job",
     {
       title: "Get Upload Job",
-      description: "How an upload started by create_gallery, create_video, create_series or add_episodes is going. Without jobId: the recent jobs.",
+      description: "How an upload started by create_gallery, create_video, create_drama or add_episodes is going. Without jobId: the recent jobs.",
       inputSchema: { jobId: z.string().optional() },
       annotations: { readOnlyHint: true },
     },
@@ -211,10 +212,10 @@ export function registerVaultTools(server: McpServer, api: Api) {
   );
 
   server.registerTool(
-    "list_vault",
+    "list_content",
     {
-      title: "List Vault",
-      description: "The account's Vault items (galleries, videos, series), newest first, ten a page.",
+      title: "List Content",
+      description: "The account's Content items (galleries, videos, dramas), newest first, ten a page.",
       inputSchema: { cursor: z.string().optional() },
       annotations: { readOnlyHint: true },
     },
@@ -222,10 +223,10 @@ export function registerVaultTools(server: McpServer, api: Api) {
   );
 
   server.registerTool(
-    "get_vault_item",
+    "get_content",
     {
-      title: "Get Vault Item",
-      description: "One Vault item: its state (uploading, processing, ready), paywall and, for a series, how many episodes are ready.",
+      title: "Get Content Item",
+      description: "One Content item: its state (uploading, processing, ready), paywall and, for a drama, how many episodes are ready.",
       inputSchema: { code },
       annotations: { readOnlyHint: true },
     },
@@ -258,5 +259,5 @@ async function uploadEpisodes(api: Api, job: Job, code: string, title: string, p
       if (ok) uploaded++;
     }
   }
-  return `${uploaded} of ${picked.length} episodes uploaded. Bunny encodes each one; check get_vault_item for how many are ready.`;
+  return `${uploaded} of ${picked.length} episodes uploaded. Bunny encodes each one; check get_content for how many are ready.`;
 }

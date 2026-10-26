@@ -8,7 +8,7 @@ export type JobItem = { name: string; state: ItemState; percent: number; error?:
 export type Job = {
   id: string;
   kind: string;
-  // The Vault item the job fills, once it exists.
+  // The Content item the job fills, once it exists.
   code: string | null;
   state: "running" | "done" | "failed";
   items: JobItem[];

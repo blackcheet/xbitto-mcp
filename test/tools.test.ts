@@ -127,8 +127,8 @@ describe("set_paywall", () => {
   });
 });
 
-describe("create_series", () => {
-  it("makes the series, then each part of episodes, and uploads them in order to Bunny", async () => {
+describe("create_drama", () => {
+  it("makes the drama, then each part of episodes, and uploads them in order to Bunny", async () => {
     const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
     for (const name of ["EP10.mp4", "EP2.mp4", "EP1.mp4"]) await writeFile(join(dir, name), Buffer.alloc(1000, 1));
     let video = 0;
@@ -142,7 +142,7 @@ describe("create_series", () => {
       return undefined;
     });
     const { call } = await mcpClient(api);
-    const started = await call("create_series", { episodes: dir, title: "Night Train", price: "3", freeCount: 1 });
+    const started = await call("create_drama", { episodes: dir, title: "Night Train", price: "3", freeCount: 1 });
     expect(started.json).toMatchObject({ code: "Ser1es", files: 3 });
 
     const create = calls.find((c) => c.path === "/api/vault/series")!;
@@ -175,7 +175,7 @@ describe("create_series", () => {
       return undefined;
     });
     const { call } = await mcpClient(api);
-    const started = await call("create_series", { episodes: dir, title: "Resign", price: "1", freeCount: 0 });
+    const started = await call("create_drama", { episodes: dir, title: "Resign", price: "1", freeCount: 0 });
     expect((await finished(call, started.json.jobId)).state).toBe("done");
     expect(calls.some((c) => c.path === "/api/vault/Old1/episodes/e1/upload")).toBe(true);
     expect([...bunny.tus.values()].find((upload) => upload.metadata.title === "Resign · 1")!.headers.videoId).toBe("fresh");
@@ -186,7 +186,7 @@ describe("create_series", () => {
     for (const name of ["a.mp4", "b.mp4"]) await writeFile(join(dir, name), "x");
     const { api, calls } = fakeApi(() => undefined);
     const { call } = await mcpClient(api);
-    const result = await call("create_series", { episodes: dir, title: "T", price: "1", freeCount: 2 });
+    const result = await call("create_drama", { episodes: dir, title: "T", price: "1", freeCount: 2 });
     expect(result.error).toBe(true);
     expect(calls).toHaveLength(0);
   });
@@ -252,7 +252,7 @@ describe("whoami", () => {
       ],
       bunny: { stream: true, storage: false },
       walletScreening: false,
-      canCreate: { freeLink: true, gatedLink: true, codes: true, gallery: false, video: true, series: true },
+      canCreate: { freeLink: true, gatedLink: true, codes: true, gallery: false, video: true, drama: true },
       missing: [expect.stringMatching(/Bunny Storage isn't connected/)],
     });
   });

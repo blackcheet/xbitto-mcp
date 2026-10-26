@@ -46,7 +46,7 @@ const MESSAGES: Record<string, string> = {
   invalid_cover_url: "The cover must be an https image URL.",
   invalid_images: "The images aren't valid: 1–20 JPEG, PNG, WebP, GIF or AVIF files, each at most 20 MB.",
   screening_unavailable: "Wallet screening isn't available on the platform right now.",
-  series_full: "A series holds at most 100 episodes.",
+  series_full: "A drama holds at most 100 episodes.",
   codes_full: "The account's Codes items hold at most 10,000 unsold codes, all together.",
   codes_required: "A Codes item is created with its codes: give at least one.",
   invalid_tag: "A tag can be up to 24 characters and can't be a web address.",
