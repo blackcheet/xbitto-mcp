@@ -46,7 +46,7 @@ API key.
 8. `confirm_payment` and `reject_payment` can't be undone. Only call them after the user has decided.
 9. **Store**: `set_tag` tags an item (up to 24 characters, not a web address; `""` removes it). `set_store_visibility`
    with `show: true` makes the item's title, price, picture and tag public on the store, so only do it when the user
-   asks. `get_store` is `null` until the creator opens the store in the dashboard; opening, closing and naming it are dashboard only.
+   asks. `get_store` is `null` until the creator opens the store in the dashboard; opening, closing, naming it and changing its link are dashboard only.
 
 ## What the Key Can't Do
 

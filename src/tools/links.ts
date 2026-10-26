@@ -160,7 +160,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
       description:
         "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. " +
         "Consumers browse it by type (link, gallery, video, drama) and then by tag. " +
-        "Null when the creator has never opened it; opening, closing and naming it are done in the dashboard.",
+        "Null when the creator has never opened it; opening, closing, naming it and changing its link are done in the dashboard.",
       annotations: { readOnlyHint: true },
     },
     handle(async () => {

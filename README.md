@@ -105,7 +105,7 @@ progress with `get_upload_job`. Uploads stop if the MCP server stops; what alrea
 ## What a Key Can't Do
 
 An API key can't add or change payout wallets, connect Bunny, change the password, email or other account
-settings, open, close or rename the store, buy credits, pay promoters, run paid wallet checks, export or
+settings, open, close or rename the store or change its link, buy credits, pay promoters, run paid wallet checks, export or
 delete the account, or create other keys. Do those in the dashboard. Remove a key any time on the **AI Agents** page.
 
 Keep the key secret: anyone who has it can create and change your links and Vault items.
