@@ -1,9 +1,9 @@
 # Xbitto MCP
 
 An [MCP](https://modelcontextprotocol.io) server that lets an AI agent (Claude, Cursor, or any MCP client)
-work in your [Xbitto](https://xbitto.com) creator account: create short links and paywall links, fill an
-access code pool with hundreds of items at once, and upload galleries, videos and whole series of episodes
-from your computer.
+work in your [Xbitto](https://xbitto.com) creator account: create short links and paywall links, sell
+license keys, accounts and other codes by the hundred, and upload galleries, videos and whole series of
+episodes from your computer.
 
 It runs on your own computer. Files go **straight from your computer to your own Bunny account**, using
 upload addresses the Xbitto API signs. They never pass through Xbitto.
@@ -82,9 +82,11 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `create_link` | A short link to a URL (its destination can't be changed later) |
 | `set_tag` | Tag a link or Vault item, or remove its tag |
 | `get_store`, `set_store_visibility` | Your store (My Store) and its tags; show a paid item on it or take it off |
-| `set_paywall` | Sell a link: price, title, description, cover, access code or a pool of items, and how many items one order can buy |
-| `add_pool_items` | Add license keys, logins or invite links to a pool, from a list or a text file, 100 per request |
-| `get_pool_stats` | How many pool items are left and used |
+| `set_paywall` | Sell a link: price, title, description, cover and an optional access code |
+| `create_codes` | Sell codes (license keys, accounts, proxies, gift cards), each consumer getting their own: created with its codes, from a list or a text file |
+| `add_codes` | Add codes to an item's stock, up to 1000 in one call, 100 per request |
+| `update_codes` | Change an item's price, title, label, how many codes one order can buy, or its note |
+| `list_codes`, `get_codes` | Your Codes items and how many codes each has left, sold and owed |
 | `create_gallery` | Sell 1–20 pictures from a folder |
 | `create_video` | Sell a video, with an optional preview clip |
 | `create_series` | Sell up to 100 episodes for one price, first few free |
@@ -96,7 +98,7 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 
 Example prompts:
 
-- "Create a paywall link to https://example.com/course for 9 USDT and add the keys in `keys.txt` to its pool."
+- "Sell the keys in `keys.txt` as Pro License Keys, 9 USDT each, redeemed at https://example.com/redeem."
 - "Upload the episodes in `D:\Drama\Night Train` as a series called Night Train, 3 USDT, first 2 free."
 
 Uploads run in the background, so a long series doesn't block the agent: it starts the upload and checks

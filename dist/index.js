@@ -36337,8 +36337,8 @@ var MESSAGES = {
   invalid_images: "The images aren't valid: 1\u201320 JPEG, PNG, WebP, GIF or AVIF files, each at most 20 MB.",
   screening_unavailable: "Wallet screening isn't available on the platform right now.",
   series_full: "A series holds at most 100 episodes.",
-  pool_full: "The pool holds at most 1000 unused items.",
-  insufficient_stock: "Not that many items are left for one order.",
+  codes_full: "The account's Codes items hold at most 10,000 unsold codes, all together.",
+  codes_required: "A Codes item is created with its codes: give at least one.",
   invalid_tag: "A tag can be up to 24 characters and can't be a web address.",
   tag_unsafe: "Xbitto can't accept this tag. Change it and try again.",
   not_found: "Not found. Check the code or id.",
@@ -44445,7 +44445,7 @@ var EMPTY_COMPLETION_RESULT = {
   }
 };
 
-// src/tools/links.ts
+// src/tools/codes.ts
 import { readFile as readFile2, stat as stat2 } from "node:fs/promises";
 import { extname as extname2 } from "node:path";
 
@@ -45527,21 +45527,21 @@ var VIDEO_TYPES = {
   ".avi": "video/x-msvideo"
 };
 var videoType = (path) => VIDEO_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
-function readItemLines(text, max) {
-  const items = [];
+function readCodeLines(text, max) {
+  const codes = [];
   const seen = /* @__PURE__ */ new Set();
   let tooLong = 0;
   for (const line of text.split(/\r\n?|\n/)) {
-    const item = line.trim();
-    if (item === "" || seen.has(item)) continue;
-    if ([...item].length > max) {
+    const code2 = line.trim();
+    if (code2 === "" || seen.has(code2)) continue;
+    if ([...code2].length > max) {
       tooLong++;
       continue;
     }
-    seen.add(item);
-    items.push(item);
+    seen.add(code2);
+    codes.push(code2);
   }
-  return { items, tooLong };
+  return { codes, tooLong };
 }
 
 // src/tools/common.ts
@@ -45556,6 +45556,12 @@ var handle = (run) => async (args) => {
   } catch (error62) {
     return fail(error62);
   }
+};
+var query = (params) => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value !== void 0 && value !== "") search.set(key, String(value));
+  const text = search.toString();
+  return text ? `?${text}` : "";
 };
 var code = external_exports.string().regex(/^[0-9A-Za-z]{1,32}$/, "a short code, e.g. aB3xY9").describe("The link's short code (the part after the domain).");
 var paywallFields = {
@@ -45587,24 +45593,132 @@ async function defaultWallets(api) {
   return [...picked.values()];
 }
 
-// src/tools/links.ts
-var POOL_ADD_MAX = 100;
-var POOL_ITEM_MAX_LENGTH = 200;
-var TAG_MAX_LENGTH = 24;
-var ITEMS_FILE_MAX_BYTES = 2 * 1024 * 1024;
-async function readItemsFile(path) {
-  if (![".txt", ".csv"].includes(extname2(path).toLowerCase())) throw new Error("The items file must be a .txt or .csv file.");
+// src/tools/codes.ts
+var CODES_PER_REQUEST = 100;
+var CODE_MAX_LENGTH = 500;
+var CODES_CALL_MAX = 1e3;
+var CODES_FILE_MAX_BYTES = 2 * 1024 * 1024;
+async function readCodesFile(path) {
+  if (![".txt", ".csv"].includes(extname2(path).toLowerCase())) throw new Error("The codes file must be a .txt or .csv file.");
   const info = await stat2(path).catch(() => null);
   if (!info?.isFile()) throw new Error(`Not a file: ${path}`);
-  if (info.size > ITEMS_FILE_MAX_BYTES) throw new Error("The items file is larger than 2 MB.");
+  if (info.size > CODES_FILE_MAX_BYTES) throw new Error("The codes file is larger than 2 MB.");
   return readFile2(path, "utf8");
 }
-var query = (params) => {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) if (value !== void 0 && value !== "") search.set(key, String(value));
-  const text = search.toString();
-  return text ? `?${text}` : "";
+async function readCodes({ codes, file: file2 }) {
+  if (codes === void 0 === (file2 === void 0)) throw new Error("Give either codes or file.");
+  const lines = readCodeLines(file2 !== void 0 ? await readCodesFile(file2) : codes.join("\n"), CODE_MAX_LENGTH);
+  if (lines.codes.length === 0) throw new Error(`No codes to add: every line was empty${lines.tooLong ? ` or over ${CODE_MAX_LENGTH} characters` : ""}.`);
+  if (lines.codes.length > CODES_CALL_MAX) throw new Error(`At most ${CODES_CALL_MAX} codes in one call. Split the list.`);
+  return lines;
+}
+async function sendCodes(api, item, codes, sentBefore = 0, total = codes.length) {
+  const sum = { added: 0, duplicates: 0, served: 0, stats: null };
+  for (let start = 0; start < codes.length; start += CODES_PER_REQUEST) {
+    try {
+      const answer = await api.post(`/api/codes/${item}/stock`, { codes: codes.slice(start, start + CODES_PER_REQUEST) });
+      sum.added += answer.added;
+      sum.duplicates += answer.duplicates;
+      sum.served += answer.served;
+      sum.stats = answer.stats;
+    } catch (error62) {
+      const reason = error62 instanceof Error ? error62.message : String(error62);
+      throw new Error(`${reason} Added ${sentBefore + sum.added} of ${total} codes to ${item} before stopping; add the rest with add_codes.`);
+    }
+  }
+  return sum;
+}
+var codesInput = {
+  codes: external_exports.array(external_exports.string()).optional().describe("The codes, one per entry. A login is one code, written on one line, e.g. user:password."),
+  file: external_exports.string().optional().describe("Path to a .txt or .csv file the user named, one code per line (at most 2 MB).")
 };
+var itemFields = {
+  ...paywallFields,
+  coverUrl: external_exports.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
+  blurCover: external_exports.boolean().optional().describe("Blur the cover on the landing page."),
+  codeLabel: external_exports.string().max(40).optional().describe('What the order page calls the codes, e.g. "License Key". Left out: "Your Code".'),
+  maxPerOrder: external_exports.number().int().min(1).max(50).optional().describe("How many codes one order may buy (1\u201350). Above 1 the landing page asks how many; the price is per code. Left out: 1."),
+  note: external_exports.string().max(2e3).optional().describe("Instructions shown with the codes after payment, e.g. login steps. Plain text, line breaks kept. Never shown to an API key.")
+};
+var itemBody = (api, args) => paywallBody(api, args, {
+  coverUrl: args.coverUrl ?? null,
+  coverBlur: args.blurCover ?? false,
+  codeLabel: args.codeLabel ?? "",
+  maxPerOrder: args.maxPerOrder ?? 1,
+  ...args.note === void 0 ? {} : { note: args.note }
+});
+function registerCodesTools(server, api) {
+  server.registerTool(
+    "list_codes",
+    {
+      title: "List Codes Items",
+      description: "The account's Codes items, newest first, ten a page, each with its stock counted. Pass nextCursor back as cursor for the next page.",
+      inputSchema: {
+        q: external_exports.string().max(100).optional().describe("Search the short code and title."),
+        status: external_exports.enum(["active", "disabled", "blocked"]).optional(),
+        tag: external_exports.string().optional().describe("Only items with this tag."),
+        cursor: external_exports.string().optional()
+      },
+      annotations: { readOnlyHint: true }
+    },
+    handle((args) => api.get(`/api/codes${query(args)}`))
+  );
+  server.registerTool(
+    "get_codes",
+    {
+      title: "Get Codes Item",
+      description: "One Codes item: its settings, its redeem link and its stock \u2014 `left` unsold, `used` given to orders, `waiting` owed to orders that paid while it was short (codes added next go to them first). The codes themselves and the note are never shown to an API key.",
+      inputSchema: { code },
+      annotations: { readOnlyHint: true }
+    },
+    handle(({ code: code2 }) => api.get(`/api/codes/${code2}`))
+  );
+  server.registerTool(
+    "create_codes",
+    {
+      title: "Create Codes Item",
+      description: "Sell codes \u2014 license keys, accounts, proxies, gift cards \u2014 each consumer getting their own from the item's stock. It is created with its codes: give `codes` or `file`, one code per line (blank lines and repeats dropped, lines over 500 characters skipped and counted), up to 1000 in one call. Ask the user for the title, price, the codes and whether there is a redeem link before calling: the redeem link can never be changed, and every item counts against today's link allowance even if deleted. Check with whoami that it can be made first.",
+      inputSchema: {
+        ...itemFields,
+        ...codesInput,
+        redeemUrl: external_exports.string().url().max(2048).optional().describe("Where the codes are used, e.g. a redeem page: the order page shows a button to it. Can't be changed later. Left out: none.")
+      }
+    },
+    handle(async (args) => {
+      const lines = await readCodes(args);
+      const first = lines.codes.slice(0, CODES_PER_REQUEST);
+      const body = await itemBody(api, args);
+      const { code: code2 } = await api.post("/api/codes", { ...body, codes: first, ...args.redeemUrl ? { redeemUrl: args.redeemUrl } : {} });
+      const rest = await sendCodes(api, code2, lines.codes.slice(CODES_PER_REQUEST), first.length, lines.codes.length);
+      return { code: code2, added: first.length + rest.added, alreadyInStock: rest.duplicates, tooLong: lines.tooLong };
+    })
+  );
+  server.registerTool(
+    "update_codes",
+    {
+      title: "Update Codes Item",
+      description: "Change a Codes item's title, price, description, cover, label, Max per Order or note. Replaces its settings, so pass every field you want kept; leave `note` out to keep the saved one (an API key never sees it). The redeem link can't be changed. Price changes apply to new orders only.",
+      inputSchema: { code, ...itemFields }
+    },
+    handle(async (args) => api.post(`/api/links/${args.code}/paywall`, await itemBody(api, args)))
+  );
+  server.registerTool(
+    "add_codes",
+    {
+      title: "Add Codes",
+      description: "Add codes to a Codes item's stock: give `codes` or `file`, one code per line, up to 1000 in one call. Blank lines and repeats are dropped, lines over 500 characters are skipped and counted, codes already in stock are counted, not added twice. Orders that paid while the item was short get the new codes first. An account holds up to 10,000 unsold codes across its items.",
+      inputSchema: { code, ...codesInput }
+    },
+    handle(async (args) => {
+      const lines = await readCodes(args);
+      const sum = await sendCodes(api, args.code, lines.codes);
+      return { added: sum.added, alreadyInStock: sum.duplicates, tooLong: lines.tooLong, givenToWaitingOrders: sum.served, stock: sum.stats };
+    })
+  );
+}
+
+// src/tools/links.ts
+var TAG_MAX_LENGTH = 24;
 var NETWORK_NAMES = { solana: "Solana", tron: "TRON" };
 var amount = (micro) => String(micro / 1e6);
 async function readiness(api) {
@@ -45645,6 +45759,7 @@ async function readiness(api) {
     canCreate: {
       freeLink: canCreate,
       gatedLink: canSell,
+      codes: canSell,
       gallery: canSell && storage.storage !== null,
       video: canSell && stream.connection !== null,
       series: canSell && stream.connection !== null
@@ -45708,7 +45823,7 @@ function registerLinkTools(server, api) {
     "get_store",
     {
       title: "Get Store",
-      description: "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. Consumers browse it by type (link, gallery, video, drama) and then by tag. Null when the creator has never opened it; opening, closing, naming it and changing its link are done in the dashboard.",
+      description: "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. Consumers browse it by type (link, codes, gallery, video, drama) and then by tag. Null when the creator has never opened it; opening, closing, naming it and changing its link are done in the dashboard.",
       annotations: { readOnlyHint: true }
     },
     handle(async () => {
@@ -45740,18 +45855,13 @@ function registerLinkTools(server, api) {
     "set_paywall",
     {
       title: "Set Paywall",
-      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. Ask the user for the title and price, and whether there is a code to give (one for everyone, or items from a pool) before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. For items from a pool use codeMode 'unique' and fill the pool with add_pool_items; maxPerOrder lets one consumer buy several in one order (ask the user).",
+      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. To sell keys, accounts or other codes each consumer gets their own of, use create_codes instead.",
       inputSchema: {
         code,
         ...paywallFields,
         coverUrl: external_exports.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
         blurCover: external_exports.boolean().optional().describe("Blur the cover on the landing page."),
-        codeMode: external_exports.enum(["same", "unique"]).optional().describe("'same': one code for every consumer. 'unique': each order takes its own items from the pool."),
-        maxPerOrder: external_exports.number().int().min(1).max(50).optional().describe(
-          "In 'unique' mode: how many items one order may buy (1\u201350). The landing page then asks how many; the price is per item and the Sales Fee is charged once per order, on its total. Left out: 1, one item per order."
-        ),
-        accessCode: external_exports.string().max(500).optional().describe("The code every consumer gets, in 'same' mode. Left out: none."),
-        codeLabel: external_exports.string().max(40).optional().describe('What the consumer page calls the code, e.g. "License Key".')
+        accessCode: external_exports.string().max(500).optional().describe('The code every consumer gets with the link; "" for none. Left out: the one saved is kept.')
       }
     },
     handle(
@@ -45759,66 +45869,11 @@ function registerLinkTools(server, api) {
         const body = await paywallBody(api, args, {
           coverUrl: args.coverUrl ?? null,
           coverBlur: args.blurCover ?? false,
-          codeMode: args.codeMode ?? "same",
-          maxPerOrder: args.maxPerOrder ?? 1,
-          codeLabel: args.codeLabel ?? "",
           ...args.accessCode === void 0 ? {} : { accessCode: args.accessCode }
         });
         return api.post(`/api/links/${args.code}/paywall`, body);
       }
     )
-  );
-  server.registerTool(
-    "add_pool_items",
-    {
-      title: "Add Pool Items",
-      description: "Add items (license keys, account logins, invite links\u2026) to a Gated link's pool; each delivered order takes one. Give `items` or `file` (a text file, one item per line). Blank lines and repeats are dropped, items over 200 characters are skipped and counted, items already in the pool are counted, not added twice. Sent 100 at a time; a pool holds up to 1000 unused items.",
-      inputSchema: {
-        code,
-        items: external_exports.array(external_exports.string()).optional(),
-        file: external_exports.string().optional().describe("Path to a .txt or .csv file the user named, one item per line (at most 2 MB).")
-      }
-    },
-    handle(async ({ code: code2, items, file: file2 }) => {
-      if (items === void 0 === (file2 === void 0)) throw new Error("Give either items or file.");
-      const text = file2 !== void 0 ? await readItemsFile(file2) : items.join("\n");
-      const lines = readItemLines(text, POOL_ITEM_MAX_LENGTH);
-      let added = 0;
-      let alreadyThere = 0;
-      let given = 0;
-      let stats = null;
-      for (let start = 0; start < lines.items.length; start += POOL_ADD_MAX) {
-        const part = lines.items.slice(start, start + POOL_ADD_MAX);
-        try {
-          const answer = await api.post(`/api/links/${code2}/access-codes`, { codes: part });
-          added += answer.added;
-          alreadyThere += answer.duplicates;
-          given += answer.served;
-          stats = answer.stats;
-        } catch (error62) {
-          const reason = error62 instanceof Error ? error62.message : String(error62);
-          throw new Error(`${reason} Added ${added} of ${lines.items.length} before stopping.`);
-        }
-      }
-      return {
-        added,
-        alreadyInPool: alreadyThere,
-        tooLong: lines.tooLong,
-        // Orders that had paid while the pool was empty receive the new items first.
-        givenToWaitingOrders: given,
-        pool: stats
-      };
-    })
-  );
-  server.registerTool(
-    "get_pool_stats",
-    {
-      title: "Get Pool Stats",
-      description: "How many items a Gated link's pool has left and how many were given to orders.",
-      inputSchema: { code },
-      annotations: { readOnlyHint: true }
-    },
-    handle(({ code: code2 }) => api.get(`/api/links/${code2}/access-codes/stats`))
   );
 }
 
@@ -45847,7 +45902,7 @@ function registerOrderTools(server, api) {
     "get_order",
     {
       title: "Get Order",
-      description: "One order, with the payment under review if there is one. For a pool, `order.quantity` is how many items were bought and `poolCodes.owed` how many the pool still owes (add items to serve them); the items themselves are never shown to an API key.",
+      description: "One order, with the payment under review if there is one. For a Codes item, `order.quantity` is how many codes were bought and `codes.owed` how many its stock still owes (add_codes serves them); the codes themselves are never shown to an API key.",
       inputSchema: { orderId },
       annotations: { readOnlyHint: true }
     },
@@ -46192,10 +46247,11 @@ function createServer(api) {
   const server = new McpServer(
     { name: "xbitto", version: true ? "0.4.0" : "dev" },
     {
-      instructions: "Tools for a creator's Xbitto account: short links, Gated links with access code pools, and Vault galleries, videos and series. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
+      instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (keys, accounts and the like, each consumer getting their own), and Vault galleries, videos and series. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }
   );
   registerLinkTools(server, api);
+  registerCodesTools(server, api);
   registerVaultTools(server, api);
   registerOrderTools(server, api);
   return server;

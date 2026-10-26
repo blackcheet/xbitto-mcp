@@ -21,6 +21,14 @@ export const handle =
     }
   };
 
+// A list's filters as a query string, the empty ones left out.
+export const query = (params: Record<string, string | number | undefined>) => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "") search.set(key, String(value));
+  const text = search.toString();
+  return text ? `?${text}` : "";
+};
+
 export const code = z.string().regex(/^[0-9A-Za-z]{1,32}$/, "a short code, e.g. aB3xY9").describe("The link's short code (the part after the domain).");
 
 // The paywall fields, as the dashboard's paywall form sends them. Saving replaces the paywall's settings:

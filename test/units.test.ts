@@ -3,17 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../src/api.js";
-import { compareNames, imagePixels, imageType, pickFiles, readItemLines } from "../src/files.js";
+import { compareNames, imagePixels, imageType, pickFiles, readCodeLines } from "../src/files.js";
 import { fakeApi, KEY, pngHeader } from "./fakes.js";
 
-describe("pool item lines", () => {
+describe("code lines", () => {
   it("trims, drops blanks and repeats, and counts lines that are too long", () => {
-    const text = " KEY-1 \r\n\nKEY-2\nKEY-1\n" + "x".repeat(201) + "\nKEY-3";
-    expect(readItemLines(text, 200)).toEqual({ items: ["KEY-1", "KEY-2", "KEY-3"], tooLong: 1 });
+    const text = " KEY-1 \r\n\nKEY-2\nKEY-1\n" + "x".repeat(501) + "\nKEY-3";
+    expect(readCodeLines(text, 500)).toEqual({ codes: ["KEY-1", "KEY-2", "KEY-3"], tooLong: 1 });
   });
 
   it("counts characters, not UTF-16 units", () => {
-    expect(readItemLines("😀".repeat(200), 200).items).toHaveLength(1);
+    expect(readCodeLines("😀".repeat(500), 500).codes).toHaveLength(1);
   });
 });
 

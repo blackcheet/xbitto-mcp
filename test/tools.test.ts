@@ -23,18 +23,18 @@ async function finished(call: Awaited<ReturnType<typeof mcpClient>>["call"], job
   throw new Error("job never finished");
 }
 
-describe("add_pool_items", () => {
-  it("sends 250 items as 100 + 100 + 50 and adds up what came back", async () => {
+describe("add_codes", () => {
+  it("sends 250 codes as 100 + 100 + 50 and adds up what came back", async () => {
     const { api, calls } = fakeApi((call) => {
       const codes = (call.body as { codes: string[] }).codes;
       return { body: { added: codes.length - 1, duplicates: 1, served: 0, stats: { left: 7 } } };
     });
     const { call } = await mcpClient(api);
-    const items = Array.from({ length: 250 }, (_, i) => `KEY-${i}`);
-    const result = await call("add_pool_items", { code: "aB3xY9", items: [...items, "KEY-0", "", "y".repeat(300)] });
+    const codes = Array.from({ length: 250 }, (_, i) => `KEY-${i}`);
+    const result = await call("add_codes", { code: "aB3xY9", codes: [...codes, "KEY-0", "", "y".repeat(501)] });
     expect(calls.map((c) => (c.body as { codes: string[] }).codes.length)).toEqual([100, 100, 50]);
-    expect(calls.every((c) => c.path === "/api/links/aB3xY9/access-codes")).toBe(true);
-    expect(result.json).toEqual({ added: 247, alreadyInPool: 3, tooLong: 1, givenToWaitingOrders: 0, pool: { left: 7 } });
+    expect(calls.every((c) => c.path === "/api/codes/aB3xY9/stock")).toBe(true);
+    expect(result.json).toEqual({ added: 247, alreadyInStock: 3, tooLong: 1, givenToWaitingOrders: 0, stock: { left: 7 } });
   });
 
   it("reads only a .txt or .csv list", async () => {
@@ -43,19 +43,87 @@ describe("add_pool_items", () => {
     await writeFile(join(dir, "keys.csv"), "A\nB\n");
     const { api, calls } = fakeApi(() => ({ body: { added: 2, duplicates: 0, served: 0, stats: {} } }));
     const { call } = await mcpClient(api);
-    expect((await call("add_pool_items", { code: "aB3xY9", file: join(dir, "id_ed25519") })).text).toMatch(/\.txt or \.csv/);
+    expect((await call("add_codes", { code: "aB3xY9", file: join(dir, "id_ed25519") })).text).toMatch(/\.txt or \.csv/);
     expect(calls).toHaveLength(0);
-    expect((await call("add_pool_items", { code: "aB3xY9", file: join(dir, "keys.csv") })).json).toMatchObject({ added: 2 });
+    expect((await call("add_codes", { code: "aB3xY9", file: join(dir, "keys.csv") })).json).toMatchObject({ added: 2 });
     expect((calls[0]!.body as { codes: string[] }).codes).toEqual(["A", "B"]);
+  });
+
+  it("takes at most 1000 codes in one call, and none is no call", async () => {
+    const { api, calls } = fakeApi(() => ({ body: { added: 0, duplicates: 0, served: 0, stats: {} } }));
+    const { call } = await mcpClient(api);
+    expect((await call("add_codes", { code: "aB3xY9", codes: Array.from({ length: 1001 }, (_, i) => `K${i}`) })).text).toMatch(/At most 1000/);
+    expect((await call("add_codes", { code: "aB3xY9", codes: ["", "  "] })).text).toMatch(/No codes to add/);
+    expect(calls).toHaveLength(0);
   });
 
   it("says how far it got when the API stops it", async () => {
     let n = 0;
-    const { api } = fakeApi(() => (++n === 1 ? { body: { added: 100, duplicates: 0, served: 0, stats: {} } } : { status: 409, body: { error: { code: "pool_full" } } }));
+    const { api } = fakeApi(() => (++n === 1 ? { body: { added: 100, duplicates: 0, served: 0, stats: {} } } : { status: 409, body: { error: { code: "codes_full" } } }));
     const { call } = await mcpClient(api);
-    const result = await call("add_pool_items", { code: "aB3xY9", items: Array.from({ length: 150 }, (_, i) => `K${i}`) });
+    const result = await call("add_codes", { code: "aB3xY9", codes: Array.from({ length: 150 }, (_, i) => `K${i}`) });
     expect(result.error).toBe(true);
-    expect(result.text).toMatch(/at most 1000 unused items\. Added 100 of 150/);
+    expect(result.text).toMatch(/at most 10,000 unsold codes, all together\. Added 100 of 150 codes to aB3xY9/);
+  });
+});
+
+describe("create_codes", () => {
+  it("creates the item with its first 100 codes, then sends the rest to its stock", async () => {
+    const { api, calls } = fakeApi((c: Call) => {
+      if (c.path === "/api/payout-addresses") return { body: wallets };
+      if (c.path === "/api/codes") return { status: 201, body: { code: "C0des1" } };
+      const codes = (c.body as { codes: string[] }).codes;
+      return { body: { added: codes.length, duplicates: 0, served: 0, stats: { left: 150 } } };
+    });
+    const { call } = await mcpClient(api);
+    const result = await call("create_codes", {
+      title: "Proxy Keys",
+      price: "3",
+      codes: Array.from({ length: 150 }, (_, i) => `P-${i}`),
+      redeemUrl: "https://redeem.example.com/",
+      codeLabel: "Proxy",
+      maxPerOrder: 5,
+      note: "Use within 30 days.",
+    });
+    expect(result.json).toEqual({ code: "C0des1", added: 150, alreadyInStock: 0, tooLong: 0 });
+    const create = calls.find((c) => c.path === "/api/codes")!;
+    expect(create.body).toMatchObject({
+      title: "Proxy Keys",
+      price: "3",
+      payoutAddressIds: ["w-sol", "w-tron"],
+      redeemUrl: "https://redeem.example.com/",
+      codeLabel: "Proxy",
+      maxPerOrder: 5,
+      note: "Use within 30 days.",
+    });
+    expect((create.body as { codes: string[] }).codes).toHaveLength(100);
+    const stock = calls.filter((c) => c.path === "/api/codes/C0des1/stock");
+    expect(stock.map((c) => (c.body as { codes: string[] }).codes)).toEqual([Array.from({ length: 50 }, (_, i) => `P-${100 + i}`)]);
+  });
+
+  it("sends no redeem link when there is none, and makes nothing without codes", async () => {
+    const { api, calls } = fakeApi((c: Call) => (c.path === "/api/payout-addresses" ? { body: wallets } : { status: 201, body: { code: "C0des2" } }));
+    const { call } = await mcpClient(api);
+    expect((await call("create_codes", { title: "Keys", price: "1", codes: [] })).text).toMatch(/No codes to add/);
+    expect(calls).toHaveLength(0);
+    await call("create_codes", { title: "Keys", price: "1", codes: ["K-1"] });
+    const create = calls.find((c) => c.path === "/api/codes")!;
+    expect(create.body).not.toHaveProperty("redeemUrl");
+    expect(create.body).not.toHaveProperty("note");
+    expect(calls.some((c) => c.path.endsWith("/stock"))).toBe(false);
+  });
+});
+
+describe("set_paywall", () => {
+  it("sends an access code only when given, and no Codes fields", async () => {
+    const { api, calls } = fakeApi((c: Call) => (c.path === "/api/payout-addresses" ? { body: wallets } : { body: { paywall: {} } }));
+    const { call } = await mcpClient(api);
+    await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9" });
+    await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9", accessCode: "PIN-1" });
+    const saves = calls.filter((c) => c.path === "/api/links/aB3xY9/paywall").map((c) => c.body as Record<string, unknown>);
+    expect(saves[0]).not.toHaveProperty("accessCode");
+    expect(saves[1]).toMatchObject({ accessCode: "PIN-1" });
+    for (const body of saves) for (const field of ["codeMode", "codeLabel", "maxPerOrder", "note"]) expect(body).not.toHaveProperty(field);
   });
 });
 
@@ -184,14 +252,14 @@ describe("whoami", () => {
       ],
       bunny: { stream: true, storage: false },
       walletScreening: false,
-      canCreate: { freeLink: true, gatedLink: true, gallery: false, video: true, series: true },
+      canCreate: { freeLink: true, gatedLink: true, codes: true, gallery: false, video: true, series: true },
       missing: [expect.stringMatching(/Bunny Storage isn't connected/)],
     });
   });
 
   it("holds back paid items without a wallet or while paid content is paused", async () => {
     const noWallet = await ask({ "/api/payout-addresses": { addresses: [], rails: [{ chain: "tron", asset: "USDT" }] } });
-    expect(noWallet.canCreate).toMatchObject({ freeLink: true, gatedLink: false, video: false });
+    expect(noWallet.canCreate).toMatchObject({ freeLink: true, gatedLink: false, codes: false, video: false });
     expect(noWallet.missing).toContainEqual(expect.stringMatching(/No usable payout wallet/));
 
     const paused = await ask({ "/api/account/paywalls": { open: false }, "/api/credits/summary": { balanceMicro: 0 } });

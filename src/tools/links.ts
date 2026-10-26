@@ -1,37 +1,12 @@
-import { readFile, stat } from "node:fs/promises";
-import { extname } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Api } from "../api.js";
-import { readItemLines } from "../files.js";
-import { code, handle, paywallBody, paywallFields } from "./common.js";
+import { code, handle, paywallBody, paywallFields, query } from "./common.js";
 
-// The account, links, paywalls and the access code pool of a Gated link.
+// The account, links, Gated links' paywalls, tags and the store.
 
-// The API takes this many pool items in one request, each at most this long.
-export const POOL_ADD_MAX = 100;
-export const POOL_ITEM_MAX_LENGTH = 200;
 // A tag, as long as the API takes it.
 export const TAG_MAX_LENGTH = 24;
-
-// Every line of this file becomes something a consumer can buy, so only a plain list is read: a .txt or
-// .csv file of reasonable size, never whatever file an instruction hidden in a web page names.
-const ITEMS_FILE_MAX_BYTES = 2 * 1024 * 1024;
-
-async function readItemsFile(path: string): Promise<string> {
-  if (![".txt", ".csv"].includes(extname(path).toLowerCase())) throw new Error("The items file must be a .txt or .csv file.");
-  const info = await stat(path).catch(() => null);
-  if (!info?.isFile()) throw new Error(`Not a file: ${path}`);
-  if (info.size > ITEMS_FILE_MAX_BYTES) throw new Error("The items file is larger than 2 MB.");
-  return readFile(path, "utf8");
-}
-
-const query = (params: Record<string, string | number | undefined>) => {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "") search.set(key, String(value));
-  const text = search.toString();
-  return text ? `?${text}` : "";
-};
 
 type Me = { user: { email: string; emailVerified: boolean; frozen: boolean } };
 type Wallets = { addresses: { chain: string; asset: string; blacklistedAt: number | null }[]; rails: { chain: string; asset: string }[] };
@@ -84,6 +59,7 @@ export async function readiness(api: Api) {
     canCreate: {
       freeLink: canCreate,
       gatedLink: canSell,
+      codes: canSell,
       gallery: canSell && storage.storage !== null,
       video: canSell && stream.connection !== null,
       series: canSell && stream.connection !== null,
@@ -159,7 +135,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
       title: "Get Store",
       description:
         "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. " +
-        "Consumers browse it by type (link, gallery, video, drama) and then by tag. " +
+        "Consumers browse it by type (link, codes, gallery, video, drama) and then by tag. " +
         "Null when the creator has never opened it; opening, closing, naming it and changing its link are done in the dashboard.",
       annotations: { readOnlyHint: true },
     },
@@ -205,27 +181,16 @@ export function registerLinkTools(server: McpServer, api: Api) {
     {
       title: "Set Paywall",
       description:
-        "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code. " +
-        "Ask the user for the title and price, and whether there is a code to give (one for everyone, or items from a pool) before calling. " +
+        "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code " +
+        "such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. " +
         "Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. " +
-        "For items from a pool use codeMode 'unique' and fill the pool with add_pool_items; maxPerOrder lets one consumer buy several in one order (ask the user).",
+        "To sell keys, accounts or other codes each consumer gets their own of, use create_codes instead.",
       inputSchema: {
         code,
         ...paywallFields,
         coverUrl: z.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
         blurCover: z.boolean().optional().describe("Blur the cover on the landing page."),
-        codeMode: z.enum(["same", "unique"]).optional().describe("'same': one code for every consumer. 'unique': each order takes its own items from the pool."),
-        maxPerOrder: z
-          .number()
-          .int()
-          .min(1)
-          .max(50)
-          .optional()
-          .describe(
-            "In 'unique' mode: how many items one order may buy (1–50). The landing page then asks how many; the price is per item and the Sales Fee is charged once per order, on its total. Left out: 1, one item per order.",
-          ),
-        accessCode: z.string().max(500).optional().describe("The code every consumer gets, in 'same' mode. Left out: none."),
-        codeLabel: z.string().max(40).optional().describe('What the consumer page calls the code, e.g. "License Key".'),
+        accessCode: z.string().max(500).optional().describe('The code every consumer gets with the link; "" for none. Left out: the one saved is kept.'),
       },
     },
     handle(
@@ -238,79 +203,15 @@ export function registerLinkTools(server: McpServer, api: Api) {
         verifyPayer?: boolean;
         coverUrl?: string;
         blurCover?: boolean;
-        codeMode?: "same" | "unique";
-        maxPerOrder?: number;
         accessCode?: string;
-        codeLabel?: string;
       }) => {
         const body = await paywallBody(api, args, {
           coverUrl: args.coverUrl ?? null,
           coverBlur: args.blurCover ?? false,
-          codeMode: args.codeMode ?? "same",
-          maxPerOrder: args.maxPerOrder ?? 1,
-          codeLabel: args.codeLabel ?? "",
           ...(args.accessCode === undefined ? {} : { accessCode: args.accessCode }),
         });
         return api.post(`/api/links/${args.code}/paywall`, body);
       },
     ),
-  );
-
-  server.registerTool(
-    "add_pool_items",
-    {
-      title: "Add Pool Items",
-      description:
-        "Add items (license keys, account logins, invite links…) to a Gated link's pool; each delivered order takes one. " +
-        "Give `items` or `file` (a text file, one item per line). Blank lines and repeats are dropped, items over 200 characters are skipped and counted, " +
-        "items already in the pool are counted, not added twice. Sent 100 at a time; a pool holds up to 1000 unused items.",
-      inputSchema: {
-        code,
-        items: z.array(z.string()).optional(),
-        file: z.string().optional().describe("Path to a .txt or .csv file the user named, one item per line (at most 2 MB)."),
-      },
-    },
-    handle(async ({ code, items, file }: { code: string; items?: string[]; file?: string }) => {
-      if ((items === undefined) === (file === undefined)) throw new Error("Give either items or file.");
-      const text = file !== undefined ? await readItemsFile(file) : items!.join("\n");
-      const lines = readItemLines(text, POOL_ITEM_MAX_LENGTH);
-      let added = 0;
-      let alreadyThere = 0;
-      let given = 0;
-      let stats: unknown = null;
-      for (let start = 0; start < lines.items.length; start += POOL_ADD_MAX) {
-        const part = lines.items.slice(start, start + POOL_ADD_MAX);
-        try {
-          const answer = await api.post<{ added: number; duplicates: number; served: number; stats: unknown }>(`/api/links/${code}/access-codes`, { codes: part });
-          added += answer.added;
-          alreadyThere += answer.duplicates;
-          given += answer.served;
-          stats = answer.stats;
-        } catch (error) {
-          // What went in stays in; say how far it got.
-          const reason = error instanceof Error ? error.message : String(error);
-          throw new Error(`${reason} Added ${added} of ${lines.items.length} before stopping.`);
-        }
-      }
-      return {
-        added,
-        alreadyInPool: alreadyThere,
-        tooLong: lines.tooLong,
-        // Orders that had paid while the pool was empty receive the new items first.
-        givenToWaitingOrders: given,
-        pool: stats,
-      };
-    }),
-  );
-
-  server.registerTool(
-    "get_pool_stats",
-    {
-      title: "Get Pool Stats",
-      description: "How many items a Gated link's pool has left and how many were given to orders.",
-      inputSchema: { code },
-      annotations: { readOnlyHint: true },
-    },
-    handle(({ code }: { code: string }) => api.get(`/api/links/${code}/access-codes/stats`)),
   );
 }

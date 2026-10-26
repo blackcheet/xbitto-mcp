@@ -88,21 +88,21 @@ const VIDEO_TYPES: Record<string, string> = {
 };
 export const videoType = (path: string) => VIDEO_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
 
-// The items in a pasted list or a text file, one per line: trimmed, blank lines dropped, a repeat kept
+// The codes in a pasted list or a text file, one per line: trimmed, blank lines dropped, a repeat kept
 // once, in the order given. Lines longer than `max` characters are counted apart, not cut.
-export function readItemLines(text: string, max: number): { items: string[]; tooLong: number } {
-  const items: string[] = [];
+export function readCodeLines(text: string, max: number): { codes: string[]; tooLong: number } {
+  const codes: string[] = [];
   const seen = new Set<string>();
   let tooLong = 0;
   for (const line of text.split(/\r\n?|\n/)) {
-    const item = line.trim();
-    if (item === "" || seen.has(item)) continue;
-    if ([...item].length > max) {
+    const code = line.trim();
+    if (code === "" || seen.has(code)) continue;
+    if ([...code].length > max) {
       tooLong++;
       continue;
     }
-    seen.add(item);
-    items.push(item);
+    seen.add(code);
+    codes.push(code);
   }
-  return { items, tooLong };
+  return { codes, tooLong };
 }

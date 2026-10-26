@@ -33,7 +33,7 @@ export function registerOrderTools(server: McpServer, api: Api) {
     {
       title: "Get Order",
       description:
-        "One order, with the payment under review if there is one. For a pool, `order.quantity` is how many items were bought and `poolCodes.owed` how many the pool still owes (add items to serve them); the items themselves are never shown to an API key.",
+        "One order, with the payment under review if there is one. For a Codes item, `order.quantity` is how many codes were bought and `codes.owed` how many its stock still owes (add_codes serves them); the codes themselves are never shown to an API key.",
       inputSchema: { orderId },
       annotations: { readOnlyHint: true },
     },
