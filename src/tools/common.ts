@@ -52,9 +52,20 @@ export const paywallFields = {
     .boolean()
     .optional()
     .describe("Screen the consumer's wallet before showing the payment address (each real check costs credits). Only when whoami shows walletScreening."),
+  translations: z
+    .partialRecord(
+      z.enum(["en", "zh", "tr", "vi", "th", "es", "pt"]),
+      z.strictObject({ title: z.string().max(120).optional(), description: z.string().max(1000).optional() }),
+    )
+    .optional()
+    .describe(
+      "The title and description again in other languages, e.g. { es: { title, description } }. Consumers see their own language; any other language, " +
+        "and a field left empty, shows the title and description above. Share previews always use those. Left out: kept as they are; {} removes them all.",
+    ),
 };
 
-type PaywallInput = { title: string; description?: string; price: string; payoutWalletIds?: string[]; verifyPayer?: boolean };
+type Translations = Partial<Record<string, { title?: string; description?: string }>>;
+type PaywallInput = { title: string; description?: string; price: string; payoutWalletIds?: string[]; verifyPayer?: boolean; translations?: Translations };
 
 type Wallet = { id: string; chain: string; asset: string; blacklistedAt: number | null };
 
@@ -68,6 +79,7 @@ export async function paywallBody(api: Api, input: PaywallInput, extra: Record<s
     price: input.price,
     payoutAddressIds,
     ...(input.verifyPayer === undefined ? {} : { verifyPayer: input.verifyPayer }),
+    ...(input.translations === undefined ? {} : { translations: input.translations }),
     ...extra,
   };
 }

@@ -45569,7 +45569,13 @@ var paywallFields = {
   description: external_exports.string().max(1e3).optional().describe("Shown before payment. Supports **bold**, _italic_ and lists with '- ' or '1. '. Links show as plain text."),
   price: external_exports.string().regex(/^\d+(\.\d{1,6})?$/).describe('Price in USDT/USDC as a decimal string, e.g. "5" or "4.99": above 0, at most 1000000. The Sales Fee (see whoami) comes out of credits per sale.'),
   payoutWalletIds: external_exports.array(external_exports.string()).optional().describe("Wallet ids from list_wallets, at most one per network. Left out: the first usable wallet on each network."),
-  verifyPayer: external_exports.boolean().optional().describe("Screen the consumer's wallet before showing the payment address (each real check costs credits). Only when whoami shows walletScreening.")
+  verifyPayer: external_exports.boolean().optional().describe("Screen the consumer's wallet before showing the payment address (each real check costs credits). Only when whoami shows walletScreening."),
+  translations: external_exports.partialRecord(
+    external_exports.enum(["en", "zh", "tr", "vi", "th", "es", "pt"]),
+    external_exports.strictObject({ title: external_exports.string().max(120).optional(), description: external_exports.string().max(1e3).optional() })
+  ).optional().describe(
+    "The title and description again in other languages, e.g. { es: { title, description } }. Consumers see their own language; any other language, and a field left empty, shows the title and description above. Share previews always use those. Left out: kept as they are; {} removes them all."
+  )
 };
 async function paywallBody(api, input2, extra = {}) {
   const payoutAddressIds = input2.payoutWalletIds?.length ? input2.payoutWalletIds : await defaultWallets(api);
@@ -45580,6 +45586,7 @@ async function paywallBody(api, input2, extra = {}) {
     price: input2.price,
     payoutAddressIds,
     ...input2.verifyPayer === void 0 ? {} : { verifyPayer: input2.verifyPayer },
+    ...input2.translations === void 0 ? {} : { translations: input2.translations },
     ...extra
   };
 }
@@ -46245,7 +46252,7 @@ function registerOrderTools(server, api) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.4.0" : "dev" },
+    { name: "xbitto", version: true ? "0.5.0" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

@@ -47,8 +47,12 @@ API key.
 7. `set_paywall` and `update_codes` replace the settings: to change one field, read the item with `get_link` or
    `get_codes` first and pass the rest back. The access code, unsold codes, the codes an order received and a
    Codes item's note are never shown to an API key; leave `accessCode` or `note` out to keep the saved one.
-8. `confirm_payment` and `reject_payment` can't be undone. Only call them after the user has decided.
-9. **Store**: `set_tag` tags an item (up to 24 characters, not a web address; `""` removes it). `set_store_visibility`
+8. **Other languages**: every tool that sells takes `translations`, the title and description again per language,
+   e.g. `{ "es": { "title": "…", "description": "…" } }` (en, zh, tr, vi, th, es, pt). Consumers see their own
+   language; any other, and any field left empty, shows the main title and description, as do share previews.
+   Write each language natively, not word for word. Left out, the saved ones are kept; `{}` removes them all.
+9. `confirm_payment` and `reject_payment` can't be undone. Only call them after the user has decided.
+10. **Store**: `set_tag` tags an item (up to 24 characters, not a web address; `""` removes it). `set_store_visibility`
    with `show: true` makes the item's title, price, picture and tag public on the store, so only do it when the user
    asks. `get_store` is `null` until the creator opens the store in the dashboard; opening, closing, naming it and changing its link are dashboard only.
 

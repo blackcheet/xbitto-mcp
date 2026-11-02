@@ -96,10 +96,15 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `list_orders`, `get_order` | Your orders |
 | `confirm_payment`, `reject_payment` | Decide a payment on hold (only when you say so) |
 
+Every tool that sells something also takes `translations`: the title and description again in other
+languages (en, zh, tr, vi, th, es, pt). Consumers see the one in their language; any other language shows the
+main title and description, and so do share previews.
+
 Example prompts:
 
 - "Sell the keys in `keys.txt` as Pro License Keys, 9 USDT each, redeemed at https://example.com/redeem."
 - "Upload the episodes in `D:\Drama\Night Train` as a drama called Night Train, 3 USDT, first 2 free."
+- "Add a Spanish title and description to my Night Train drama."
 
 Uploads run in the background, so a long drama doesn't block the agent: it starts the upload and checks
 progress with `get_upload_job`. Uploads stop if the MCP server stops; what already arrived stays.

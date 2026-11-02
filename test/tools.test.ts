@@ -125,6 +125,20 @@ describe("set_paywall", () => {
     expect(saves[1]).toMatchObject({ accessCode: "PIN-1" });
     for (const body of saves) for (const field of ["codeMode", "codeLabel", "maxPerOrder", "note"]) expect(body).not.toHaveProperty(field);
   });
+
+  it("sends other languages only when given, so leaving them out keeps the saved ones", async () => {
+    const { api, calls } = fakeApi((c: Call) => (c.path === "/api/payout-addresses" ? { body: wallets } : { body: { paywall: {} } }));
+    const { call } = await mcpClient(api);
+    await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9" });
+    await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9", translations: { es: { title: "Curso", description: "Paso a paso" } } });
+    const saves = calls.filter((c) => c.path === "/api/links/aB3xY9/paywall").map((c) => c.body as Record<string, unknown>);
+    expect(saves[0]).not.toHaveProperty("translations");
+    expect(saves[1]).toMatchObject({ translations: { es: { title: "Curso", description: "Paso a paso" } } });
+    // A language Xbitto doesn't show, or a field it doesn't take, never reaches the API.
+    expect((await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9", translations: { fr: { title: "Cours" } } })).error).toBe(true);
+    expect((await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9", translations: { es: { note: "x" } } })).error).toBe(true);
+    expect(calls.filter((c) => c.path === "/api/links/aB3xY9/paywall")).toHaveLength(2);
+  });
 });
 
 describe("create_drama", () => {
