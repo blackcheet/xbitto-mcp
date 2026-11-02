@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../src/api.js";
 import { compareNames, imagePixels, imageType, pickFiles, readCodeLines } from "../src/files.js";
+import { sendImage } from "../src/uploads.js";
 import { fakeApi, KEY, pngHeader } from "./fakes.js";
 
 describe("code lines", () => {
@@ -36,6 +37,35 @@ describe("local files", () => {
     const text = join(dir, "fake.png");
     await writeFile(text, "not a picture at all");
     expect(await imageType(text)).toBeNull();
+  });
+});
+
+describe("picture upload", () => {
+  it("tries a dropped connection or a busy Bunny again, but not a refusal", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
+    const path = join(dir, "a.png");
+    await writeFile(path, pngHeader(1, 1));
+    const answers: (() => Response)[] = [
+      () => {
+        throw new TypeError("fetch failed");
+      },
+      () => new Response(null, { status: 503 }),
+      () => new Response(null, { status: 201 }),
+    ];
+    let n = 0;
+    const flaky = (async () => answers[n++]!()) as unknown as typeof fetch;
+    await sendImage("https://bunny.test/a", path, "image/png", flaky, [0, 0, 0]);
+    expect(n).toBe(3);
+
+    let refused = 0;
+    const no = (async () => (refused++, new Response(null, { status: 403 }))) as unknown as typeof fetch;
+    await expect(sendImage("https://bunny.test/a", path, "image/png", no, [0, 0, 0])).rejects.toThrow(/403/);
+    expect(refused).toBe(1);
+
+    const down = (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+    await expect(sendImage("https://bunny.test/a", path, "image/png", down, [0, 0])).rejects.toThrow(/Couldn't reach Bunny Storage/);
   });
 });
 

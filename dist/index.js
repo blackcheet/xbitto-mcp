@@ -45817,10 +45817,27 @@ function sendVideo(path, grant, title, type, onPercent) {
     upload.start();
   });
 }
-async function sendImage(url2, path, type, fetcher = fetch) {
+var IMAGE_RETRY_MS = [2e3, 5e3, 1e4];
+async function sendImage(url2, path, type, fetcher = fetch, backoffMs = IMAGE_RETRY_MS) {
   const body = await readFile3(path);
-  const res = await fetcher(url2, { method: "PUT", headers: { "Content-Type": type, "Content-Length": String(body.length) }, body });
-  if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).${res.status === 403 ? ` ${BUNNY_REGIONS}` : ""}`);
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await fetcher(url2, { method: "PUT", headers: { "Content-Type": type, "Content-Length": String(body.length) }, body });
+    } catch (error62) {
+      if (attempt < backoffMs.length) {
+        await wait(backoffMs[attempt]);
+        continue;
+      }
+      throw new Error(`Couldn't reach Bunny Storage: ${error62 instanceof Error ? error62.message : String(error62)}`);
+    }
+    if ((res.status === 429 || res.status >= 500) && attempt < backoffMs.length) {
+      await wait(backoffMs[attempt]);
+      continue;
+    }
+    if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).${res.status === 403 ? ` ${BUNNY_REGIONS}` : ""}`);
+    return;
+  }
 }
 
 // src/tools/content.ts
@@ -45853,43 +45870,59 @@ function registerContentTools(server, api) {
     handle(async (args) => {
       const picked = await pickFiles(args.images, IMAGE_EXTENSIONS);
       if (picked.length > GALLERY_MAX) throw new Error(`A gallery holds at most ${GALLERY_MAX} pictures; got ${picked.length}.`);
-      const described = await Promise.all(
-        picked.map(async (file2) => {
-          if (file2.size > IMAGE_MAX_BYTES) throw new Error(`Larger than 20 MB: ${file2.name}`);
-          const type = await imageType(file2.path);
-          if (!type) throw new Error(`Not a JPEG, PNG, WebP, GIF or AVIF picture: ${file2.name}`);
-          const pixels = await imagePixels(file2.path);
-          return { file: file2, type, request: { type, size: file2.size, ...pixels ?? {} } };
-        })
-      );
+      const described = await describeImages(picked);
       const cover = args.coverIndex ?? 0;
       if (cover >= picked.length) throw new Error(`coverIndex ${cover} is past the last picture.`);
       const body = await paywallBody(api, args, { images: described.map((entry) => entry.request), ...args.limitDevices === void 0 ? {} : { limitDevices: args.limitDevices } });
       const created = await api.post("/api/content/galleries", body);
       const job = startJob("gallery", picked.map((file2) => file2.name), async (job2) => {
         job2.code = created.code;
-        const queue = described.map((entry, index) => ({ ...entry, grant: created.uploads[index], item: job2.items[index] }));
-        const workers = Array.from({ length: IMAGE_CONCURRENCY }, async () => {
-          for (let next = queue.shift(); next; next = queue.shift()) {
-            const { file: file2, type, grant, item } = next;
-            await runItem(item, async () => sendImage(grant.url, file2.path, type));
-          }
-        });
-        await Promise.all(workers);
-        const expected = created.uploads.map((upload) => upload.id);
-        let images = [];
-        for (let attempt = 0; attempt < 4; attempt++) {
-          if (attempt > 0) await wait(1500 * attempt);
-          images = (await api.post(`/api/content/${created.code}/images/confirm`)).images;
-          if (expected.every((id) => images.find((image) => image.id === id)?.uploaded !== false)) break;
-        }
-        const arrived = images.filter((image) => image.uploaded);
+        const arrived = await sendGallery(api, job2, created.code, described, created.uploads);
         const coverId = created.uploads[cover].id;
         const coverImage = arrived.find((image) => image.id === coverId) ?? arrived[0];
         if (coverImage) await api.post(`/api/content/${created.code}/cover`, { imageId: coverImage.id });
-        return `${arrived.length} of ${picked.length} pictures arrived.${arrived.length > 0 ? " The gallery takes orders." : ""}`;
+        return galleryMessage(arrived, created.uploads, " The gallery takes orders.");
       });
       return started(job, created.code);
+    })
+  );
+  server.registerTool(
+    "add_images",
+    {
+      title: "Add Images",
+      description: "Send pictures to an existing gallery. They first go to the places of pictures that never arrived (get_content shows those as uploaded: false), in order, so give those same pictures first; any left over are added at the end, up to 20 pictures in all. Use it to finish a gallery whose upload was cut off, or to add more pictures.",
+      inputSchema: {
+        code,
+        images: files,
+        coverIndex: external_exports.number().int().min(0).optional().describe("Make one of these pictures the cover, counting from 0 among the ones given here. Left out: the cover stays.")
+      }
+    },
+    handle(async ({ code: code2, images, coverIndex }) => {
+      const picked = await pickFiles(images, IMAGE_EXTENSIONS);
+      const described = await describeImages(picked);
+      if (coverIndex !== void 0 && coverIndex >= picked.length) throw new Error(`coverIndex ${coverIndex} is past the last picture.`);
+      const { item } = await api.get(`/api/content/${code2}`);
+      if (item.media !== "images") throw new Error(`${code2} is not a gallery.`);
+      const empty = item.images.filter((image) => !image.uploaded);
+      const extra = described.slice(empty.length);
+      if (item.images.length + extra.length > GALLERY_MAX) {
+        throw new Error(`The gallery has ${item.images.length} pictures (${empty.length} not arrived) and holds at most ${GALLERY_MAX}.`);
+      }
+      const grants = [];
+      for (const image of empty.slice(0, described.length)) {
+        grants.push({ id: image.id, url: (await api.post(`/api/content/${code2}/images/${image.id}/upload`)).upload.url });
+      }
+      if (extra.length > 0) {
+        grants.push(...(await api.post(`/api/content/${code2}/images`, { images: extra.map((entry) => entry.request) })).uploads);
+      }
+      const job = startJob("images", picked.map((file2) => file2.name), async (job2) => {
+        job2.code = code2;
+        const arrived = await sendGallery(api, job2, code2, described, grants);
+        const coverImage = coverIndex === void 0 ? void 0 : arrived.find((image) => image.id === grants[coverIndex].id);
+        if (coverImage) await api.post(`/api/content/${code2}/cover`, { imageId: coverImage.id });
+        return galleryMessage(arrived, grants, "");
+      });
+      return started(job, code2, { filled: Math.min(empty.length, described.length), added: extra.length });
     })
   );
   server.registerTool(
@@ -45983,7 +46016,7 @@ function registerContentTools(server, api) {
     "get_upload_job",
     {
       title: "Get Upload Job",
-      description: "How an upload started by create_gallery, create_video, create_drama or add_episodes is going. Without jobId: the recent jobs.",
+      description: "How an upload started by create_gallery, add_images, create_video, create_drama or add_episodes is going. Without jobId: the recent jobs.",
       inputSchema: { jobId: external_exports.string().optional() },
       annotations: { readOnlyHint: true }
     },
@@ -46015,15 +46048,54 @@ function registerContentTools(server, api) {
     handle(({ code: code2 }) => api.get(`/api/content/${code2}`))
   );
 }
+async function describeImages(picked) {
+  return Promise.all(
+    picked.map(async (file2) => {
+      if (file2.size > IMAGE_MAX_BYTES) throw new Error(`Larger than 20 MB: ${file2.name}`);
+      const type = await imageType(file2.path);
+      if (!type) throw new Error(`Not a JPEG, PNG, WebP, GIF or AVIF picture: ${file2.name}`);
+      const pixels = await imagePixels(file2.path);
+      return { file: file2, type, request: { type, size: file2.size, ...pixels ?? {} } };
+    })
+  );
+}
+async function sendGallery(api, job, code2, described, grants) {
+  const queue = described.map((entry, index) => ({ ...entry, grant: grants[index], item: job.items[index] }));
+  const workers = Array.from({ length: IMAGE_CONCURRENCY }, async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      const { file: file2, type, grant, item } = next;
+      await runItem(item, async () => sendImage(grant.url, file2.path, type));
+    }
+  });
+  await Promise.all(workers);
+  let images = [];
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await wait(1500 * attempt);
+    images = (await api.post(`/api/content/${code2}/images/confirm`)).images;
+    if (grants.every((grant) => images.find((image) => image.id === grant.id)?.uploaded !== false)) break;
+  }
+  return images;
+}
+function galleryMessage(images, grants, takesOrders) {
+  const sent = grants.filter((grant) => images.some((image) => image.id === grant.id && image.uploaded)).length;
+  const missing = grants.length - sent;
+  return `${sent} of ${grants.length} pictures arrived.` + (images.some((image) => image.uploaded) ? takesOrders : "") + (missing > 0 ? ` Send the ${missing} that didn't with add_images.` : "");
+}
 var RESIGN_BEFORE_S = 30 * 60;
 var freshGrant = async (api, code2, episodeId) => (await api.post(`/api/content/${code2}/episodes/${episodeId}/upload`)).upload;
 async function uploadEpisodes(api, job, code2, title, picked, first) {
   let uploaded = 0;
   for (let start = 0; start < picked.length; start += EPISODES_PER_REQUEST) {
     const part = picked.slice(start, start + EPISODES_PER_REQUEST);
-    const { uploads } = await api.post(`/api/content/${code2}/episodes`, {
-      files: part.map((file2) => ({ name: file2.name }))
-    });
+    let uploads;
+    try {
+      ({ uploads } = await api.post(`/api/content/${code2}/episodes`, {
+        files: part.map((file2) => ({ name: file2.name }))
+      }));
+    } catch (error62) {
+      const reason = error62 instanceof Error ? error62.message : String(error62);
+      throw new Error(`${reason} ${uploaded} of ${picked.length} episodes uploaded; send the ones skipped to ${code2} with add_episodes.`);
+    }
     for (const [index, file2] of part.entries()) {
       const number4 = first + start + index;
       const ok2 = await runItem(job.items[start + index], async (onPercent) => {
@@ -46252,7 +46324,7 @@ function registerOrderTools(server, api) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.5.0" : "dev" },
+    { name: "xbitto", version: true ? "0.6.0" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

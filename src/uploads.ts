@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Upload, type DetailedError } from "tus-js-client";
+import { wait } from "./api.js";
 
 // Bytes go from this machine straight to the creator's own Bunny account, with the grants the Xbitto API
 // signed. Nothing passes through Xbitto: the API only signs the upload and, afterwards, looks at what
@@ -40,9 +41,28 @@ export function sendVideo(path: string, grant: UploadGrant, title: string, type:
 }
 
 // A picture to its presigned address in the creator's Bunny Storage zone. Pictures are at most 20 MB, so
-// the file is read whole.
-export async function sendImage(url: string, path: string, type: string, fetcher: typeof fetch = fetch): Promise<void> {
+// the file is read whole. A dropped connection or a busy answer (429, 5xx) is tried again: a PUT of the
+// same file to the same address can be repeated safely.
+const IMAGE_RETRY_MS = [2000, 5000, 10000];
+
+export async function sendImage(url: string, path: string, type: string, fetcher: typeof fetch = fetch, backoffMs: number[] = IMAGE_RETRY_MS): Promise<void> {
   const body = await readFile(path);
-  const res = await fetcher(url, { method: "PUT", headers: { "Content-Type": type, "Content-Length": String(body.length) }, body });
-  if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).${res.status === 403 ? ` ${BUNNY_REGIONS}` : ""}`);
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetcher(url, { method: "PUT", headers: { "Content-Type": type, "Content-Length": String(body.length) }, body });
+    } catch (error) {
+      if (attempt < backoffMs.length) {
+        await wait(backoffMs[attempt]!);
+        continue;
+      }
+      throw new Error(`Couldn't reach Bunny Storage: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if ((res.status === 429 || res.status >= 500) && attempt < backoffMs.length) {
+      await wait(backoffMs[attempt]!);
+      continue;
+    }
+    if (!res.ok) throw new Error(`Bunny Storage refused the upload (${res.status}).${res.status === 403 ? ` ${BUNNY_REGIONS}` : ""}`);
+    return;
+  }
 }

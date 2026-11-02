@@ -51,47 +51,69 @@ export function registerContentTools(server: McpServer, api: Api) {
     handle(async (args: { images: string | string[]; coverIndex?: number; limitDevices?: boolean } & Parameters<typeof paywallBody>[1]) => {
       const picked = await pickFiles(args.images, IMAGE_EXTENSIONS);
       if (picked.length > GALLERY_MAX) throw new Error(`A gallery holds at most ${GALLERY_MAX} pictures; got ${picked.length}.`);
-      const described = await Promise.all(
-        picked.map(async (file) => {
-          if (file.size > IMAGE_MAX_BYTES) throw new Error(`Larger than 20 MB: ${file.name}`);
-          const type = await imageType(file.path);
-          if (!type) throw new Error(`Not a JPEG, PNG, WebP, GIF or AVIF picture: ${file.name}`);
-          const pixels = await imagePixels(file.path);
-          return { file, type, request: { type, size: file.size, ...(pixels ?? {}) } };
-        }),
-      );
+      const described = await describeImages(picked);
       const cover = args.coverIndex ?? 0;
       if (cover >= picked.length) throw new Error(`coverIndex ${cover} is past the last picture.`);
 
       const body = await paywallBody(api, args, { images: described.map((entry) => entry.request), ...(args.limitDevices === undefined ? {} : { limitDevices: args.limitDevices }) });
-      const created = await api.post<{ code: string; uploads: { id: string; url: string }[] }>("/api/content/galleries", body);
+      const created = await api.post<{ code: string; uploads: ImageGrant[] }>("/api/content/galleries", body);
 
       const job = startJob("gallery", picked.map((file) => file.name), async (job) => {
         job.code = created.code;
-        const queue = described.map((entry, index) => ({ ...entry, grant: created.uploads[index]!, item: job.items[index]! }));
-        const workers = Array.from({ length: IMAGE_CONCURRENCY }, async () => {
-          for (let next = queue.shift(); next; next = queue.shift()) {
-            const { file, type, grant, item } = next;
-            await runItem(item, async () => sendImage(grant.url, file.path, type));
-          }
-        });
-        await Promise.all(workers);
-
-        // Bunny can take a moment to show a file that was just written, so ask again a few times.
-        const expected = created.uploads.map((upload) => upload.id);
-        let images: { id: string; uploaded: boolean }[] = [];
-        for (let attempt = 0; attempt < 4; attempt++) {
-          if (attempt > 0) await wait(1500 * attempt);
-          images = (await api.post<{ images: { id: string; uploaded: boolean }[] }>(`/api/content/${created.code}/images/confirm`)).images;
-          if (expected.every((id) => images.find((image) => image.id === id)?.uploaded !== false)) break;
-        }
-        const arrived = images.filter((image) => image.uploaded);
+        const arrived = await sendGallery(api, job, created.code, described, created.uploads);
+        // The cover asked for, or the first picture that arrived when that one didn't.
         const coverId = created.uploads[cover]!.id;
         const coverImage = arrived.find((image) => image.id === coverId) ?? arrived[0];
         if (coverImage) await api.post(`/api/content/${created.code}/cover`, { imageId: coverImage.id });
-        return `${arrived.length} of ${picked.length} pictures arrived.${arrived.length > 0 ? " The gallery takes orders." : ""}`;
+        return galleryMessage(arrived, created.uploads, " The gallery takes orders.");
       });
       return started(job, created.code);
+    }),
+  );
+
+  server.registerTool(
+    "add_images",
+    {
+      title: "Add Images",
+      description:
+        "Send pictures to an existing gallery. They first go to the places of pictures that never arrived (get_content shows those as " +
+        "uploaded: false), in order, so give those same pictures first; any left over are added at the end, up to 20 pictures in all. " +
+        "Use it to finish a gallery whose upload was cut off, or to add more pictures.",
+      inputSchema: {
+        code,
+        images: files,
+        coverIndex: z.number().int().min(0).optional().describe("Make one of these pictures the cover, counting from 0 among the ones given here. Left out: the cover stays."),
+      },
+    },
+    handle(async ({ code, images, coverIndex }: { code: string; images: string | string[]; coverIndex?: number }) => {
+      const picked = await pickFiles(images, IMAGE_EXTENSIONS);
+      const described = await describeImages(picked);
+      if (coverIndex !== undefined && coverIndex >= picked.length) throw new Error(`coverIndex ${coverIndex} is past the last picture.`);
+      const { item } = await api.get<{ item: { media: string; images: { id: string; uploaded: boolean }[] } }>(`/api/content/${code}`);
+      if (item.media !== "images") throw new Error(`${code} is not a gallery.`);
+      const empty = item.images.filter((image) => !image.uploaded);
+      const extra = described.slice(empty.length);
+      if (item.images.length + extra.length > GALLERY_MAX) {
+        throw new Error(`The gallery has ${item.images.length} pictures (${empty.length} not arrived) and holds at most ${GALLERY_MAX}.`);
+      }
+
+      // A fresh address for each place still empty, then new places for the rest.
+      const grants: ImageGrant[] = [];
+      for (const image of empty.slice(0, described.length)) {
+        grants.push({ id: image.id, url: (await api.post<{ upload: ImageGrant }>(`/api/content/${code}/images/${image.id}/upload`)).upload.url });
+      }
+      if (extra.length > 0) {
+        grants.push(...(await api.post<{ uploads: ImageGrant[] }>(`/api/content/${code}/images`, { images: extra.map((entry) => entry.request) })).uploads);
+      }
+
+      const job = startJob("images", picked.map((file) => file.name), async (job) => {
+        job.code = code;
+        const arrived = await sendGallery(api, job, code, described, grants);
+        const coverImage = coverIndex === undefined ? undefined : arrived.find((image) => image.id === grants[coverIndex]!.id);
+        if (coverImage) await api.post(`/api/content/${code}/cover`, { imageId: coverImage.id });
+        return galleryMessage(arrived, grants, "");
+      });
+      return started(job, code, { filled: Math.min(empty.length, described.length), added: extra.length });
     }),
   );
 
@@ -199,7 +221,7 @@ export function registerContentTools(server: McpServer, api: Api) {
     "get_upload_job",
     {
       title: "Get Upload Job",
-      description: "How an upload started by create_gallery, create_video, create_drama or add_episodes is going. Without jobId: the recent jobs.",
+      description: "How an upload started by create_gallery, add_images, create_video, create_drama or add_episodes is going. Without jobId: the recent jobs.",
       inputSchema: { jobId: z.string().optional() },
       annotations: { readOnlyHint: true },
     },
@@ -234,6 +256,55 @@ export function registerContentTools(server: McpServer, api: Api) {
   );
 }
 
+type ImageGrant = { id: string; url: string };
+type DescribedImage = { file: LocalFile; type: string; request: { type: string; size: number; width?: number; height?: number } };
+type GalleryImage = { id: string; uploaded: boolean };
+
+// What the API is told about each picture before it signs: its type read from the bytes, its size and pixels.
+async function describeImages(picked: LocalFile[]): Promise<DescribedImage[]> {
+  return Promise.all(
+    picked.map(async (file) => {
+      if (file.size > IMAGE_MAX_BYTES) throw new Error(`Larger than 20 MB: ${file.name}`);
+      const type = await imageType(file.path);
+      if (!type) throw new Error(`Not a JPEG, PNG, WebP, GIF or AVIF picture: ${file.name}`);
+      const pixels = await imagePixels(file.path);
+      return { file, type, request: { type, size: file.size, ...(pixels ?? {}) } };
+    }),
+  );
+}
+
+// Puts each picture to its grant, a few at a time, then has the API look in the zone for what arrived.
+// Returns every picture of the gallery as the API now sees it.
+async function sendGallery(api: Api, job: Job, code: string, described: DescribedImage[], grants: ImageGrant[]): Promise<GalleryImage[]> {
+  const queue = described.map((entry, index) => ({ ...entry, grant: grants[index]!, item: job.items[index]! }));
+  const workers = Array.from({ length: IMAGE_CONCURRENCY }, async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      const { file, type, grant, item } = next;
+      await runItem(item, async () => sendImage(grant.url, file.path, type));
+    }
+  });
+  await Promise.all(workers);
+
+  // Bunny can take a moment to show a file that was just written, so ask again a few times.
+  let images: GalleryImage[] = [];
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await wait(1500 * attempt);
+    images = (await api.post<{ images: GalleryImage[] }>(`/api/content/${code}/images/confirm`)).images;
+    if (grants.every((grant) => images.find((image) => image.id === grant.id)?.uploaded !== false)) break;
+  }
+  return images;
+}
+
+function galleryMessage(images: GalleryImage[], grants: ImageGrant[], takesOrders: string): string {
+  const sent = grants.filter((grant) => images.some((image) => image.id === grant.id && image.uploaded)).length;
+  const missing = grants.length - sent;
+  return (
+    `${sent} of ${grants.length} pictures arrived.` +
+    (images.some((image) => image.uploaded) ? takesOrders : "") +
+    (missing > 0 ? ` Send the ${missing} that didn't with add_images.` : "")
+  );
+}
+
 const RESIGN_BEFORE_S = 30 * 60;
 const freshGrant = async (api: Api, code: string, episodeId: string) =>
   (await api.post<{ upload: UploadGrant }>(`/api/content/${code}/episodes/${episodeId}/upload`)).upload;
@@ -245,9 +316,16 @@ async function uploadEpisodes(api: Api, job: Job, code: string, title: string, p
   let uploaded = 0;
   for (let start = 0; start < picked.length; start += EPISODES_PER_REQUEST) {
     const part = picked.slice(start, start + EPISODES_PER_REQUEST);
-    const { uploads } = await api.post<{ uploads: { id: string; upload: UploadGrant }[] }>(`/api/content/${code}/episodes`, {
-      files: part.map((file) => ({ name: file.name })),
-    });
+    let uploads: { id: string; upload: UploadGrant }[];
+    try {
+      ({ uploads } = await api.post<{ uploads: { id: string; upload: UploadGrant }[] }>(`/api/content/${code}/episodes`, {
+        files: part.map((file) => ({ name: file.name })),
+      }));
+    } catch (error) {
+      // The drama itself exists, so what was skipped goes after the episodes it has.
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`${reason} ${uploaded} of ${picked.length} episodes uploaded; send the ones skipped to ${code} with add_episodes.`);
+    }
     for (const [index, file] of part.entries()) {
       const number = first + start + index;
       const ok = await runItem(job.items[start + index]!, async (onPercent) => {

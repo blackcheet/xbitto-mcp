@@ -195,6 +195,22 @@ describe("create_drama", () => {
     expect([...bunny.tus.values()].find((upload) => upload.metadata.title === "Resign · 1")!.headers.videoId).toBe("fresh");
   });
 
+  it("names add_episodes when a part of episodes can't be made", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
+    await writeFile(join(dir, "EP1.mp4"), "x");
+    const { api } = fakeApi((c: Call) => {
+      if (c.path === "/api/payout-addresses") return { body: wallets };
+      if (c.path === "/api/content/series") return { status: 201, body: { code: "Emp7y" } };
+      if (c.path === "/api/content/Emp7y/episodes") return { status: 503, body: { error: { code: "unavailable" } } };
+      return undefined;
+    });
+    const { call } = await mcpClient(api);
+    const started = await call("create_drama", { episodes: dir, title: "Gap", price: "1", freeCount: 0 });
+    const job = await finished(call, started.json.jobId);
+    expect(job).toMatchObject({ state: "failed", skipped: ["EP1.mp4"] });
+    expect(job.message).toMatch(/0 of 1 episodes uploaded; send the ones skipped to Emp7y with add_episodes\.$/);
+  });
+
   it("refuses more free episodes than half before asking the API", async () => {
     const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
     for (const name of ["a.mp4", "b.mp4"]) await writeFile(join(dir, name), "x");
@@ -233,6 +249,67 @@ describe("create_gallery", () => {
     ]);
     expect(bunny.puts.get("/storage/a")).toEqual({ type: "image/png", bytes: 97 });
     expect(calls.find((c) => c.path === "/api/content/Ga11ry/cover")!.body).toEqual({ imageId: "i2" });
+  });
+
+  it("names add_images for the pictures that didn't arrive", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
+    for (const name of ["1.png", "2.png"]) await writeFile(join(dir, name), pngHeader(10, 10));
+    const { api } = fakeApi((c) => {
+      if (c.path === "/api/payout-addresses") return { body: wallets };
+      if (c.path === "/api/content/galleries")
+        return { status: 201, body: { code: "Half", uploads: [{ id: "i1", url: `${bunny.origin}/storage/h1` }, { id: "i2", url: `${bunny.origin}/nowhere` }] } };
+      // The second never got to Bunny: answered as if its place was dropped, so confirm isn't asked again.
+      if (c.path === "/api/content/Half/images/confirm") return { body: { images: [{ id: "i1", uploaded: true }] } };
+      if (c.path === "/api/content/Half/cover") return { status: 204 };
+      return undefined;
+    });
+    const { call } = await mcpClient(api);
+    const started = await call("create_gallery", { images: dir, title: "Half", price: "1" });
+    const job = await finished(call, started.json.jobId);
+    expect(job).toMatchObject({ state: "failed", done: 1, failed: [{ name: "2.png" }] });
+    expect(job.message).toBe("1 of 2 pictures arrived. The gallery takes orders. Send the 1 that didn't with add_images.");
+  });
+});
+
+describe("add_images", () => {
+  it("fills the places that never arrived in order, adds the rest at the end and sets the cover", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
+    for (const name of ["a.png", "b.png", "c.png"]) await writeFile(join(dir, name), pngHeader(20, 10));
+    const { api, calls } = fakeApi((c) => {
+      if (c.path === "/api/content/F1ll")
+        return { body: { item: { media: "images", images: [{ id: "e1", uploaded: false }, { id: "ok", uploaded: true }, { id: "e2", uploaded: false }] } } };
+      const resign = c.path.match(/^\/api\/content\/F1ll\/images\/(e\d)\/upload$/);
+      if (resign) return { body: { upload: { id: resign[1], url: `${bunny.origin}/storage/re-${resign[1]}` } } };
+      if (c.path === "/api/content/F1ll/images") return { status: 201, body: { uploads: [{ id: "n1", url: `${bunny.origin}/storage/new-n1` }] } };
+      if (c.path === "/api/content/F1ll/images/confirm")
+        return { body: { images: ["e1", "ok", "e2", "n1"].map((id) => ({ id, uploaded: true })) } };
+      if (c.path === "/api/content/F1ll/cover") return { status: 204 };
+      return undefined;
+    });
+    const { call } = await mcpClient(api);
+    const started = await call("add_images", { code: "F1ll", images: dir, coverIndex: 0 });
+    expect(started.json).toMatchObject({ code: "F1ll", files: 3, filled: 2, added: 1 });
+    const job = await finished(call, started.json.jobId);
+    expect(job).toMatchObject({ state: "done", done: 3, message: "3 of 3 pictures arrived." });
+
+    expect(calls.find((c) => c.path === "/api/content/F1ll/images")!.body).toEqual({ images: [{ type: "image/png", size: 97, width: 20, height: 10 }] });
+    expect(bunny.puts.has("/storage/re-e1") && bunny.puts.has("/storage/re-e2") && bunny.puts.has("/storage/new-n1")).toBe(true);
+    expect(calls.find((c) => c.path === "/api/content/F1ll/cover")!.body).toEqual({ imageId: "e1" });
+  });
+
+  it("refuses an item that isn't a gallery, or more than 20 pictures, before signing anything", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "xbitto-mcp-"));
+    for (const name of ["a.png", "b.png"]) await writeFile(join(dir, name), pngHeader(10, 10));
+    const full = Array.from({ length: 19 }, (_, i) => ({ id: `p${i}`, uploaded: true }));
+    const { api, calls } = fakeApi((c) => {
+      if (c.path === "/api/content/V1deo") return { body: { item: { media: "video", images: [] } } };
+      if (c.path === "/api/content/Fu11") return { body: { item: { media: "images", images: full } } };
+      return undefined;
+    });
+    const { call } = await mcpClient(api);
+    expect((await call("add_images", { code: "V1deo", images: dir })).text).toMatch(/not a gallery/);
+    expect((await call("add_images", { code: "Fu11", images: dir })).text).toMatch(/at most 20/);
+    expect(calls.every((c) => c.method === "GET")).toBe(true);
   });
 });
 

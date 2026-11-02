@@ -88,6 +88,7 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `update_codes` | Change an item's price, title, label, how many codes one order can buy, or its note |
 | `list_codes`, `get_codes` | Your Codes items and how many codes each has left, sold and owed |
 | `create_gallery` | Sell 1–20 pictures from a folder |
+| `add_images` | Finish a gallery whose upload was cut off, or add pictures to it |
 | `create_video` | Sell a video, with an optional preview clip |
 | `create_drama` | Sell a drama of up to 100 episodes for one price, first few free |
 | `add_episodes` | Add episodes to the end of a drama |
@@ -108,6 +109,8 @@ Example prompts:
 
 Uploads run in the background, so a long drama doesn't block the agent: it starts the upload and checks
 progress with `get_upload_job`. Uploads stop if the MCP server stops; what already arrived stays.
+A dropped connection is tried again; if files still don't arrive, the job says how to send just those:
+`add_images` for pictures, `add_episodes` for episodes.
 
 ## What a Key Can't Do
 

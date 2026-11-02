@@ -39,9 +39,12 @@ API key.
    per request, up to 1000 per call; add more with `add_codes`. An account holds up to 10,000 unsold codes.
    Ask whether one consumer may buy several at once: if so, pass `maxPerOrder` (2–50). The price is per code;
    the Sales Fee is charged once per order, on its total. `get_codes` shows what is left, sold and owed.
-5. **Uploads** (`create_gallery`, `create_video`, `create_drama`, `add_episodes`) return a `jobId` at once.
+5. **Uploads** (`create_gallery`, `add_images`, `create_video`, `create_drama`, `add_episodes`) return a `jobId` at once.
    Poll `get_upload_job` every 30 seconds or so and report progress; don't start the same upload twice.
-   After uploading, Bunny encodes videos; `get_content` shows when they are ready.
+   After uploading, Bunny encodes videos; `get_content` shows when they are ready. If a job ends with files
+   failed or skipped, never create the item again (that makes a second one): send the pictures that failed
+   with `add_images` (same files, in the same order: they fill the places that are still empty) and the
+   episodes skipped with `add_episodes`.
 6. **Dramas**: a folder is taken in natural name order (EP2 before EP10). `freeCount` is at most half the
    episodes. It takes orders once at least `freeCount + 1` episodes (and at least 2) are ready.
 7. `set_paywall` and `update_codes` replace the settings: to change one field, read the item with `get_link` or
