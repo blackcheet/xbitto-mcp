@@ -16,7 +16,7 @@ export function createServer(api: Api) {
         "Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. " +
         "Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. " +
         "Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. " +
-        "When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. " +
+        "When Xbitto refuses an address as target_unsafe or text as text_unsafe it gives no reason; don't try to get around it by rewording. " +
         "Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard.",
     },
   );

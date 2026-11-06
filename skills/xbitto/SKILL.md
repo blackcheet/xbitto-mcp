@@ -68,5 +68,5 @@ paying promoters, paid wallet checks, data export and deletion are dashboard onl
 
 ## Content
 
-Xbitto refuses unsafe destinations and words without saying why (`target_unsafe`). Don't try to get around
+Xbitto refuses unsafe addresses (`target_unsafe`) and words (`text_unsafe`) without saying why. Don't try to get around
 it by rewording. Covers and posters are third-party https image URLs; Xbitto stores only the address.

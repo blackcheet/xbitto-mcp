@@ -36321,7 +36321,8 @@ var MESSAGES = {
   storage_unreachable: "Bunny Storage didn't answer. Try again in a moment.",
   daily_link_quota: "The account has created every link it can today.",
   rate_limited: "Too many requests. Wait a minute and try again.",
-  target_unsafe: "Xbitto can't accept this content.",
+  target_unsafe: "Xbitto can't accept this address.",
+  text_unsafe: "Xbitto can't accept some of this text.",
   target_unreachable: "The destination's domain doesn't resolve. Check the address.",
   target_immutable: "A link's destination can't be changed.",
   invalid_url: "The destination isn't a valid URL. Give a full address starting with https:// or http://.",
@@ -46324,9 +46325,9 @@ function registerOrderTools(server, api) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.6.1" : "dev" },
+    { name: "xbitto", version: true ? "0.6.2" : "dev" },
     {
-      instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
+      instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses an address as target_unsafe or text as text_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }
   );
   registerLinkTools(server, api);
