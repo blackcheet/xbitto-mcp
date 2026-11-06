@@ -57,11 +57,13 @@ API key.
 9. `confirm_payment` and `reject_payment` can't be undone. Only call them after the user has decided.
 10. **Store**: `set_tag` tags an item (up to 24 characters, not a web address; `""` removes it). `set_store_visibility`
    with `show: true` makes the item's title, price, picture and tag public on the store, so only do it when the user
-   asks. `get_store` is `null` until the creator opens the store in the dashboard; opening, closing, naming it and changing its link are dashboard only.
+   asks. `show: false` also ends the item's Featured place, which only the dashboard can give back, so say so first.
+   `get_store` is `null` until the creator opens the store in the dashboard. It shows the logo address, Telegram username and FAQ too; opening,
+   closing, naming the store, changing its link, logo, Telegram or FAQ, and choosing Featured items are dashboard only.
 
 ## What the Key Can't Do
 
-Payout wallets, Bunny connections, account settings, opening, closing or renaming the store, buying credits,
+Payout wallets, Bunny connections, account settings, opening, closing or renaming the store, its logo, Telegram, FAQ and Featured items, buying credits,
 paying promoters, paid wallet checks, data export and deletion are dashboard only. Say so and point the user to https://app.xbitto.com.
 
 ## Content

@@ -134,9 +134,10 @@ export function registerLinkTools(server: McpServer, api: Api) {
     {
       title: "Get Store",
       description:
-        "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. " +
-        "Consumers browse it by type (link, codes, gallery, video, drama) and then by tag. " +
-        "Null when the creator has never opened it; opening, closing, naming it and changing its link are done in the dashboard.",
+        "The creator's store (My Store): its public link, name, logo address, Telegram username, FAQ and whether it is open, and its tags (by name) with " +
+        "how many items each shows. Consumers browse it by type (link, codes, gallery, video, drama) and then by tag. Null when the creator has never " +
+        "opened it. All of this can only be read here: opening, closing, naming it, changing its link, logo, Telegram or FAQ, and choosing Featured items " +
+        "are done in the dashboard.",
       annotations: { readOnlyHint: true },
     },
     handle(async () => {
@@ -151,7 +152,8 @@ export function registerLinkTools(server: McpServer, api: Api) {
       title: "Show in Store",
       description:
         "Show a paid link, Codes item or Content item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its " +
-        "title, price, picture and tag public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
+        "title, price, picture and tag public to anyone with the store link, so confirm with the user first. Taking an item off also ends its Featured " +
+        "place, which only the dashboard can give back, so say so first. Free links can't be shown.",
       inputSchema: { code, show: z.boolean().describe("true to show it on the store, false to take it off.") },
     },
     handle(({ code, show }: { code: string; show: boolean }) => api.put(`/api/links/${code}/store`, { on: show })),

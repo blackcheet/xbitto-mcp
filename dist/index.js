@@ -46214,7 +46214,7 @@ function registerLinkTools(server, api) {
     "get_store",
     {
       title: "Get Store",
-      description: "The creator's store (My Store): its public link, name and whether it is open, and its tags (by name) with how many items each shows. Consumers browse it by type (link, codes, gallery, video, drama) and then by tag. Null when the creator has never opened it; opening, closing, naming it and changing its link are done in the dashboard.",
+      description: "The creator's store (My Store): its public link, name, logo address, Telegram username, FAQ and whether it is open, and its tags (by name) with how many items each shows. Consumers browse it by type (link, codes, gallery, video, drama) and then by tag. Null when the creator has never opened it. All of this can only be read here: opening, closing, naming it, changing its link, logo, Telegram or FAQ, and choosing Featured items are done in the dashboard.",
       annotations: { readOnlyHint: true }
     },
     handle(async () => {
@@ -46226,7 +46226,7 @@ function registerLinkTools(server, api) {
     "set_store_visibility",
     {
       title: "Show in Store",
-      description: "Show a paid link, Codes item or Content item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its title, price, picture and tag public to anyone with the store link, so confirm with the user first. Free links can't be shown.",
+      description: "Show a paid link, Codes item or Content item on the creator's store, or take it off. Every item is off until switched on. Showing one makes its title, price, picture and tag public to anyone with the store link, so confirm with the user first. Taking an item off also ends its Featured place, which only the dashboard can give back, so say so first. Free links can't be shown.",
       inputSchema: { code, show: external_exports.boolean().describe("true to show it on the store, false to take it off.") }
     },
     handle(({ code: code2, show }) => api.put(`/api/links/${code2}/store`, { on: show }))
@@ -46324,7 +46324,7 @@ function registerOrderTools(server, api) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.6.0" : "dev" },
+    { name: "xbitto", version: true ? "0.6.1" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses content as target_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

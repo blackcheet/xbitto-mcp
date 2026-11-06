@@ -81,7 +81,7 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `list_links`, `get_link` | Your links and their paywall settings |
 | `create_link` | A short link to a URL (its destination can't be changed later) |
 | `set_tag` | Tag a link, Codes item or Content item, or remove its tag |
-| `get_store`, `set_store_visibility` | Your store (My Store) and its tags; show a paid item on it or take it off |
+| `get_store`, `set_store_visibility` | Your store (My Store), its tags, logo address, Telegram username and FAQ; show a paid item on it or take it off (which also ends its Featured place) |
 | `set_paywall` | Sell a link: price, title, description, cover and an optional access code |
 | `create_codes` | Sell codes (accounts, license keys, proxies, gift cards), each consumer getting their own: created with its codes, from a list or a text file |
 | `add_codes` | Add codes to an item's stock, up to 1000 in one call, 100 per request |
@@ -115,7 +115,7 @@ A dropped connection is tried again; if files still don't arrive, the job says h
 ## What a Key Can't Do
 
 An API key can't add or change payout wallets, connect Bunny, change the password, email or other account
-settings, open, close or rename the store or change its link, buy credits, pay promoters, run paid wallet checks, export or
+settings, open, close or rename the store, change its link, logo, Telegram, FAQ or Featured items, buy credits, pay promoters, run paid wallet checks, export or
 delete the account, or create other keys. Do those in the dashboard. Remove a key any time on the **AI Agents** page.
 
 Keep the key secret: anyone who has it can create and change your links, Codes and Content items.
