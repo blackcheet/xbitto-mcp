@@ -37,7 +37,7 @@ export const paywallFields = {
   title: z.string().min(1).max(120).describe("What the consumer sees as the title."),
   description: z
     .string()
-    .max(1000)
+    .max(2000)
     .optional()
     .describe("Shown before payment. Supports **bold**, _italic_ and lists with '- ' or '1. '. Links show as plain text."),
   price: z
@@ -55,7 +55,7 @@ export const paywallFields = {
   translations: z
     .partialRecord(
       z.enum(["en", "zh", "tr", "vi", "th", "es", "pt"]),
-      z.strictObject({ title: z.string().max(120).optional(), description: z.string().max(1000).optional() }),
+      z.strictObject({ title: z.string().max(120).optional(), description: z.string().max(2000).optional() }),
     )
     .optional()
     .describe(
