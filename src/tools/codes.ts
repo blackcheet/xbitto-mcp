@@ -4,7 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Api } from "../api.js";
 import { readCodeLines } from "../files.js";
-import { code, handle, paywallBody, paywallFields, query } from "./common.js";
+import { code, coverField, getSavedPaywall, handle, keepSaved, paywallBody, paywallFields, query, type SavedPaywall } from "./common.js";
 
 // Codes: accounts, license keys, proxies, gift cards and the like, sold one or several to an order. Each
 // consumer gets codes of their own from the item's stock, which the creator fills.
@@ -83,9 +83,9 @@ const itemFields = {
 };
 
 type ItemArgs = {
-  title: string;
+  title?: string;
   description?: string;
-  price: string;
+  price?: string;
   payoutWalletIds?: string[];
   verifyPayer?: boolean;
   coverUrl?: string;
@@ -95,15 +95,18 @@ type ItemArgs = {
   note?: string;
 };
 
-// The item's paywall settings, as the dashboard's form sends them.
-const itemBody = (api: Api, args: ItemArgs) =>
-  paywallBody(api, args, {
-    coverUrl: args.coverUrl ?? null,
-    coverBlur: args.blurCover ?? false,
-    codeLabel: args.codeLabel ?? "",
-    maxPerOrder: args.maxPerOrder ?? 1,
+// The item's paywall settings, as the dashboard's form sends them. An update passes the item's saved
+// settings, so what it leaves out keeps its saved value.
+const itemBody = (api: Api, args: ItemArgs, saved: SavedPaywall | null = null) => {
+  const input = keepSaved(args, saved);
+  return paywallBody(api, input, {
+    coverUrl: input.coverUrl ?? null,
+    coverBlur: args.blurCover ?? saved?.coverBlur ?? false,
+    codeLabel: args.codeLabel ?? saved?.codeLabel ?? "",
+    maxPerOrder: args.maxPerOrder ?? saved?.maxPerOrder ?? 1,
     ...(args.note === undefined ? {} : { note: args.note }),
   });
+};
 
 export function registerCodesTools(server: McpServer, api: Api) {
   server.registerTool(
@@ -170,11 +173,21 @@ export function registerCodesTools(server: McpServer, api: Api) {
     {
       title: "Update Codes Item",
       description:
-        "Change a Codes item's title, price, description, cover, label, Max per Order or note. Replaces its settings, so pass every field you want kept; " +
-        "leave `note` out to keep the saved one (an API key never sees it). The redeem link can't be changed. Price changes apply to new orders only.",
-      inputSchema: { code, ...itemFields },
+        "Change a Codes item's title, price, description, cover, label, Max per Order or note. Only the fields you pass change: a field left out keeps its " +
+        "saved value (pass description \"\" or coverUrl \"\" to remove them). Leave `note` out to keep the saved one (an API key never sees it). " +
+        "The redeem link can't be changed. Price changes apply to new orders only.",
+      inputSchema: {
+        code,
+        ...itemFields,
+        title: paywallFields.title.optional().describe("What the consumer sees as the title. Left out: the saved title is kept."),
+        price: paywallFields.price.optional().describe("Price in USDT/USDC as a decimal string. Left out: the saved price is kept."),
+        coverUrl: coverField,
+      },
     },
-    handle(async (args: ItemArgs & { code: string }) => api.post(`/api/links/${args.code}/paywall`, await itemBody(api, args))),
+    handle(async (args: ItemArgs & { code: string }) => {
+      const saved = await getSavedPaywall(api, args.code);
+      return api.post(`/api/links/${args.code}/paywall`, await itemBody(api, args, saved));
+    }),
   );
 
   server.registerTool(

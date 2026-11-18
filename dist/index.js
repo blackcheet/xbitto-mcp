@@ -45578,6 +45578,30 @@ var paywallFields = {
     "The title and description again in other languages, e.g. { es: { title, description } }. Consumers see their own language; any other language, and a field left empty, shows the title and description above. Share previews always use those. Left out: kept as they are; {} removes them all."
   )
 };
+var coverField = external_exports.union([external_exports.string().url().max(2048), external_exports.literal("")]).optional().describe('A third-party https image URL for the cover. Xbitto stores only the address. "" removes the cover; left out keeps the saved one.');
+async function getSavedPaywall(api, code2) {
+  const { paywall } = await api.get(`/api/links/${code2}/paywall`);
+  return paywall;
+}
+function priceText(micro) {
+  const whole = Math.floor(micro / 1e6);
+  const fraction = String(micro % 1e6).padStart(6, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : String(whole);
+}
+function keepSaved(args, saved) {
+  const title = args.title ?? saved?.title;
+  const price = args.price ?? (saved ? priceText(saved.priceMicro) : void 0);
+  if (!title || !price) throw new Error("This link has no paywall yet, so a title and a price are needed to set one.");
+  const payoutWalletIds = args.payoutWalletIds?.length ? args.payoutWalletIds : saved?.payoutAddressIds;
+  return {
+    ...args,
+    title,
+    price,
+    description: args.description ?? saved?.description ?? "",
+    payoutWalletIds: payoutWalletIds?.length ? payoutWalletIds : void 0,
+    coverUrl: args.coverUrl === void 0 ? saved?.coverUrl ?? void 0 : args.coverUrl || void 0
+  };
+}
 async function paywallBody(api, input2, extra = {}) {
   const payoutAddressIds = input2.payoutWalletIds?.length ? input2.payoutWalletIds : await defaultWallets(api);
   if (payoutAddressIds.length === 0) throw new Error("The account has no payout wallet. Add one in the Xbitto dashboard under Wallet.");
@@ -45648,13 +45672,16 @@ var itemFields = {
   maxPerOrder: external_exports.number().int().min(1).max(50).optional().describe("How many codes one order may buy (1\u201350). Above 1 the landing page asks how many; the price is per code. Left out: 1."),
   note: external_exports.string().max(2e3).optional().describe("Instructions shown with the codes after payment, e.g. login steps. Plain text, line breaks kept. Never shown to an API key.")
 };
-var itemBody = (api, args) => paywallBody(api, args, {
-  coverUrl: args.coverUrl ?? null,
-  coverBlur: args.blurCover ?? false,
-  codeLabel: args.codeLabel ?? "",
-  maxPerOrder: args.maxPerOrder ?? 1,
-  ...args.note === void 0 ? {} : { note: args.note }
-});
+var itemBody = (api, args, saved = null) => {
+  const input2 = keepSaved(args, saved);
+  return paywallBody(api, input2, {
+    coverUrl: input2.coverUrl ?? null,
+    coverBlur: args.blurCover ?? saved?.coverBlur ?? false,
+    codeLabel: args.codeLabel ?? saved?.codeLabel ?? "",
+    maxPerOrder: args.maxPerOrder ?? saved?.maxPerOrder ?? 1,
+    ...args.note === void 0 ? {} : { note: args.note }
+  });
+};
 function registerCodesTools(server, api) {
   server.registerTool(
     "list_codes",
@@ -45705,10 +45732,19 @@ function registerCodesTools(server, api) {
     "update_codes",
     {
       title: "Update Codes Item",
-      description: "Change a Codes item's title, price, description, cover, label, Max per Order or note. Replaces its settings, so pass every field you want kept; leave `note` out to keep the saved one (an API key never sees it). The redeem link can't be changed. Price changes apply to new orders only.",
-      inputSchema: { code, ...itemFields }
+      description: 'Change a Codes item\'s title, price, description, cover, label, Max per Order or note. Only the fields you pass change: a field left out keeps its saved value (pass description "" or coverUrl "" to remove them). Leave `note` out to keep the saved one (an API key never sees it). The redeem link can\'t be changed. Price changes apply to new orders only.',
+      inputSchema: {
+        code,
+        ...itemFields,
+        title: paywallFields.title.optional().describe("What the consumer sees as the title. Left out: the saved title is kept."),
+        price: paywallFields.price.optional().describe("Price in USDT/USDC as a decimal string. Left out: the saved price is kept."),
+        coverUrl: coverField
+      }
     },
-    handle(async (args) => api.post(`/api/links/${args.code}/paywall`, await itemBody(api, args)))
+    handle(async (args) => {
+      const saved = await getSavedPaywall(api, args.code);
+      return api.post(`/api/links/${args.code}/paywall`, await itemBody(api, args, saved));
+    })
   );
   server.registerTool(
     "add_codes",
@@ -46247,20 +46283,27 @@ function registerLinkTools(server, api) {
     "set_paywall",
     {
       title: "Set Paywall",
-      description: "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. To sell accounts, keys or other codes each consumer gets their own of, use create_codes instead.",
+      description: 'Turn a link into a Gated link, or change its paywall: consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Only the fields you pass change: a field left out keeps its saved value (pass description "" or coverUrl "" to remove them). Title and price are needed only when the link has no paywall yet. The access code is never shown to an API key; leave accessCode out to keep the one saved. Works for Content items too, to rename a gallery, video or drama. To sell accounts, keys or other codes each consumer gets their own of, use create_codes instead.',
       inputSchema: {
         code,
         ...paywallFields,
-        coverUrl: external_exports.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
-        blurCover: external_exports.boolean().optional().describe("Blur the cover on the landing page."),
+        title: paywallFields.title.optional().describe("What the consumer sees as the title. Left out: the saved title is kept."),
+        price: paywallFields.price.optional().describe("Price in USDT/USDC as a decimal string. Left out: the saved price is kept."),
+        description: paywallFields.description.describe(
+          `Shown before payment. Supports **bold**, _italic_ and lists with '- ' or '1. '. Links show as plain text. "" removes it; left out keeps the saved one.`
+        ),
+        coverUrl: coverField,
+        blurCover: external_exports.boolean().optional().describe("Blur the cover on the landing page. Left out: the saved setting is kept."),
         accessCode: external_exports.string().max(500).optional().describe('The code every consumer gets with the link; "" for none. Left out: the one saved is kept.')
       }
     },
     handle(
       async (args) => {
-        const body = await paywallBody(api, args, {
-          coverUrl: args.coverUrl ?? null,
-          coverBlur: args.blurCover ?? false,
+        const saved = await getSavedPaywall(api, args.code);
+        const input2 = keepSaved(args, saved);
+        const body = await paywallBody(api, input2, {
+          coverUrl: input2.coverUrl ?? null,
+          coverBlur: args.blurCover ?? saved?.coverBlur ?? false,
           ...args.accessCode === void 0 ? {} : { accessCode: args.accessCode }
         });
         return api.post(`/api/links/${args.code}/paywall`, body);
@@ -46325,7 +46368,7 @@ function registerOrderTools(server, api) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.6.3" : "dev" },
+    { name: "xbitto", version: true ? "0.6.4" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses an address as target_unsafe or text as text_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

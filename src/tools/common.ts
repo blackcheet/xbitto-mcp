@@ -69,6 +69,57 @@ type PaywallInput = { title: string; description?: string; price: string; payout
 
 type Wallet = { id: string; chain: string; asset: string; blacklistedAt: number | null };
 
+// A cover address: an https image URL, or "" to take the cover away.
+export const coverField = z
+  .union([z.string().url().max(2048), z.literal("")])
+  .optional()
+  .describe('A third-party https image URL for the cover. Xbitto stores only the address. "" removes the cover; left out keeps the saved one.');
+
+// What a paywall holds now, as the API returns it to its owner (routes/paywalls.ts ownerView).
+export type SavedPaywall = {
+  title: string;
+  description: string;
+  priceMicro: number;
+  payoutAddressIds: string[];
+  coverUrl: string | null;
+  coverBlur: number;
+  codeLabel: string | null;
+  maxPerOrder: number;
+};
+
+export async function getSavedPaywall(api: Api, code: string): Promise<SavedPaywall | null> {
+  const { paywall } = await api.get<{ paywall: SavedPaywall | null }>(`/api/links/${code}/paywall`);
+  return paywall;
+}
+
+// Micro-USDT back into the decimal string the API takes: 4990000 is "4.99".
+export function priceText(micro: number): string {
+  const whole = Math.floor(micro / 1_000_000);
+  const fraction = String(micro % 1_000_000).padStart(6, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : String(whole);
+}
+
+// Saving replaces every setting a paywall has, so a save that changes some fields starts from the saved
+// ones: whatever the agent leaves out keeps its saved value (the access code and the Codes note are kept
+// by the API itself when they are left out). Title and price are only needed for a paywall with none yet.
+export function keepSaved<A extends { title?: string; price?: string; description?: string; payoutWalletIds?: string[]; coverUrl?: string }>(
+  args: A,
+  saved: SavedPaywall | null,
+) {
+  const title = args.title ?? saved?.title;
+  const price = args.price ?? (saved ? priceText(saved.priceMicro) : undefined);
+  if (!title || !price) throw new Error("This link has no paywall yet, so a title and a price are needed to set one.");
+  const payoutWalletIds = args.payoutWalletIds?.length ? args.payoutWalletIds : saved?.payoutAddressIds;
+  return {
+    ...args,
+    title,
+    price,
+    description: args.description ?? saved?.description ?? "",
+    payoutWalletIds: payoutWalletIds?.length ? payoutWalletIds : undefined,
+    coverUrl: args.coverUrl === undefined ? (saved?.coverUrl ?? undefined) : args.coverUrl || undefined,
+  };
+}
+
 // The request body for a paywall, with the wallets filled in when the agent named none.
 export async function paywallBody(api: Api, input: PaywallInput, extra: Record<string, unknown> = {}) {
   const payoutAddressIds = input.payoutWalletIds?.length ? input.payoutWalletIds : await defaultWallets(api);

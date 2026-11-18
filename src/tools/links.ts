@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Api } from "../api.js";
-import { code, handle, paywallBody, paywallFields, query } from "./common.js";
+import { code, coverField, getSavedPaywall, handle, keepSaved, paywallBody, paywallFields, query } from "./common.js";
 
 // The account, links, Gated links' paywalls, tags and the store.
 
@@ -183,33 +183,42 @@ export function registerLinkTools(server: McpServer, api: Api) {
     {
       title: "Set Paywall",
       description:
-        "Turn a link into a Gated link (or update its paywall): consumers pay to get the destination and, optionally, an access code " +
+        "Turn a link into a Gated link, or change its paywall: consumers pay to get the destination and, optionally, an access code " +
         "such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. " +
-        "Replaces the paywall's settings, so pass every field you want kept. The access code is never shown to an API key; leave accessCode out to keep the one saved. " +
+        "Only the fields you pass change: a field left out keeps its saved value (pass description \"\" or coverUrl \"\" to remove them). " +
+        "Title and price are needed only when the link has no paywall yet. The access code is never shown to an API key; leave accessCode out to keep the one saved. " +
+        "Works for Content items too, to rename a gallery, video or drama. " +
         "To sell accounts, keys or other codes each consumer gets their own of, use create_codes instead.",
       inputSchema: {
         code,
         ...paywallFields,
-        coverUrl: z.string().url().optional().describe("A third-party https image URL for the cover. Xbitto stores only the address."),
-        blurCover: z.boolean().optional().describe("Blur the cover on the landing page."),
+        title: paywallFields.title.optional().describe("What the consumer sees as the title. Left out: the saved title is kept."),
+        price: paywallFields.price.optional().describe("Price in USDT/USDC as a decimal string. Left out: the saved price is kept."),
+        description: paywallFields.description.describe(
+          'Shown before payment. Supports **bold**, _italic_ and lists with \'- \' or \'1. \'. Links show as plain text. "" removes it; left out keeps the saved one.',
+        ),
+        coverUrl: coverField,
+        blurCover: z.boolean().optional().describe("Blur the cover on the landing page. Left out: the saved setting is kept."),
         accessCode: z.string().max(500).optional().describe('The code every consumer gets with the link; "" for none. Left out: the one saved is kept.'),
       },
     },
     handle(
       async (args: {
         code: string;
-        title: string;
+        title?: string;
         description?: string;
-        price: string;
+        price?: string;
         payoutWalletIds?: string[];
         verifyPayer?: boolean;
         coverUrl?: string;
         blurCover?: boolean;
         accessCode?: string;
       }) => {
-        const body = await paywallBody(api, args, {
-          coverUrl: args.coverUrl ?? null,
-          coverBlur: args.blurCover ?? false,
+        const saved = await getSavedPaywall(api, args.code);
+        const input = keepSaved(args, saved);
+        const body = await paywallBody(api, input, {
+          coverUrl: input.coverUrl ?? null,
+          coverBlur: args.blurCover ?? saved?.coverBlur ?? false,
           ...(args.accessCode === undefined ? {} : { accessCode: args.accessCode }),
         });
         return api.post(`/api/links/${args.code}/paywall`, body);

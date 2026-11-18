@@ -120,7 +120,7 @@ describe("set_paywall", () => {
     const { call } = await mcpClient(api);
     await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9" });
     await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9", accessCode: "PIN-1" });
-    const saves = calls.filter((c) => c.path === "/api/links/aB3xY9/paywall").map((c) => c.body as Record<string, unknown>);
+    const saves = calls.filter((c) => c.method === "POST" && c.path === "/api/links/aB3xY9/paywall").map((c) => c.body as Record<string, unknown>);
     expect(saves[0]).not.toHaveProperty("accessCode");
     expect(saves[1]).toMatchObject({ accessCode: "PIN-1" });
     for (const body of saves) for (const field of ["codeMode", "codeLabel", "maxPerOrder", "note"]) expect(body).not.toHaveProperty(field);
@@ -131,13 +131,73 @@ describe("set_paywall", () => {
     const { call } = await mcpClient(api);
     await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9" });
     await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9", translations: { es: { title: "Curso", description: "Paso a paso" } } });
-    const saves = calls.filter((c) => c.path === "/api/links/aB3xY9/paywall").map((c) => c.body as Record<string, unknown>);
+    const saves = calls.filter((c) => c.method === "POST" && c.path === "/api/links/aB3xY9/paywall").map((c) => c.body as Record<string, unknown>);
     expect(saves[0]).not.toHaveProperty("translations");
     expect(saves[1]).toMatchObject({ translations: { es: { title: "Curso", description: "Paso a paso" } } });
     // A language Xbitto doesn't show, or a field it doesn't take, never reaches the API.
     expect((await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9", translations: { fr: { title: "Cours" } } })).error).toBe(true);
     expect((await call("set_paywall", { code: "aB3xY9", title: "Course", price: "9", translations: { es: { note: "x" } } })).error).toBe(true);
-    expect(calls.filter((c) => c.path === "/api/links/aB3xY9/paywall")).toHaveLength(2);
+    expect(calls.filter((c) => c.method === "POST" && c.path === "/api/links/aB3xY9/paywall")).toHaveLength(2);
+  });
+});
+
+describe("changing a saved paywall", () => {
+  const saved = {
+    title: "Old name",
+    description: "Keep me",
+    priceMicro: 4990000,
+    payoutAddressIds: ["w-tron"],
+    coverUrl: "https://img.example/cover.jpg",
+    coverBlur: 40,
+    codeLabel: "License Key",
+    maxPerOrder: 3,
+  };
+  const route = (paywall: unknown) => (c: Call) => {
+    if (c.method === "GET" && c.path === "/api/links/aB3xY9/paywall") return { body: { paywall } };
+    if (c.path === "/api/payout-addresses") return { body: wallets };
+    return { body: { paywall: {} } };
+  };
+  const saves = (calls: Call[]) => calls.filter((c) => c.method === "POST" && c.path === "/api/links/aB3xY9/paywall");
+
+  it("a title-only rename keeps every other saved setting", async () => {
+    const { api, calls } = fakeApi(route(saved));
+    const { call } = await mcpClient(api);
+    expect((await call("set_paywall", { code: "aB3xY9", title: "New name" })).error).toBeFalsy();
+    const [save] = saves(calls);
+    expect(save!.body).toMatchObject({
+      title: "New name",
+      price: "4.99",
+      description: "Keep me",
+      payoutAddressIds: ["w-tron"],
+      coverUrl: "https://img.example/cover.jpg",
+      coverBlur: 40,
+    });
+    expect(save!.body).not.toHaveProperty("accessCode");
+  });
+
+  it("needs a title and a price before it can set up a link with no paywall", async () => {
+    const { api, calls } = fakeApi(route(null));
+    const { call } = await mcpClient(api);
+    expect((await call("set_paywall", { code: "aB3xY9", title: "Only a title" })).error).toBe(true);
+    expect(saves(calls)).toHaveLength(0);
+  });
+
+  it('"" removes the description and the cover', async () => {
+    const { api, calls } = fakeApi(route(saved));
+    const { call } = await mcpClient(api);
+    await call("set_paywall", { code: "aB3xY9", title: "Old name", description: "", coverUrl: "" });
+    const [save] = saves(calls);
+    expect(save!.body).toMatchObject({ description: "" });
+    expect(save!.body).toMatchObject({ coverUrl: null });
+  });
+
+  it("update_codes keeps the saved label and Max per Order when they are left out", async () => {
+    const { api, calls } = fakeApi(route(saved));
+    const { call } = await mcpClient(api);
+    expect((await call("update_codes", { code: "aB3xY9", title: "New name" })).error).toBeFalsy();
+    const [save] = saves(calls);
+    expect(save!.body).toMatchObject({ title: "New name", price: "4.99", codeLabel: "License Key", maxPerOrder: 3 });
+    expect(save!.body).not.toHaveProperty("note");
   });
 });
 
