@@ -187,9 +187,13 @@ export function registerCodesTools(server: McpServer, api: Api) {
     handle(async (args: ItemArgs & { code: string }) => {
       const saved = await getSavedPaywall(api, args.code);
       // Only a Codes item takes the label, Max per Order and note; the API refuses them on anything else
-      // (invalid_input), so a gallery, video, drama or paid link is renamed with set_paywall instead.
+      // (invalid_input), so anything else is refused here with the tool that does change it.
       if (saved && saved.product !== "codes") {
-        throw new Error("This item isn't a Codes item, so update_codes can't change it. Use set_paywall to change its title, price or description.");
+        throw new Error(
+          saved.format === "link"
+            ? "This is a paid link, not a Codes item. Use set_paywall to change its title, price or description."
+            : "This is a gallery, video or drama, not a Codes item. Use update_content to change its title, price or description.",
+        );
       }
       return api.post(`/api/links/${args.code}/paywall`, await itemBody(api, args, saved));
     }),

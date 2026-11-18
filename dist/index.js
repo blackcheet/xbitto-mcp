@@ -45602,6 +45602,15 @@ function keepSaved(args, saved) {
     coverUrl: args.coverUrl === void 0 ? saved?.coverUrl ?? void 0 : args.coverUrl || void 0
   };
 }
+async function savePaywall(api, args, saved) {
+  const input2 = keepSaved(args, saved);
+  const body = await paywallBody(api, input2, {
+    coverUrl: input2.coverUrl ?? null,
+    coverBlur: args.blurCover ?? saved?.coverBlur ?? false,
+    ...args.accessCode === void 0 ? {} : { accessCode: args.accessCode }
+  });
+  return api.post(`/api/links/${args.code}/paywall`, body);
+}
 async function paywallBody(api, input2, extra = {}) {
   const payoutAddressIds = input2.payoutWalletIds?.length ? input2.payoutWalletIds : await defaultWallets(api);
   if (payoutAddressIds.length === 0) throw new Error("The account has no payout wallet. Add one in the Xbitto dashboard under Wallet.");
@@ -45744,7 +45753,9 @@ function registerCodesTools(server, api) {
     handle(async (args) => {
       const saved = await getSavedPaywall(api, args.code);
       if (saved && saved.product !== "codes") {
-        throw new Error("This item isn't a Codes item, so update_codes can't change it. Use set_paywall to change its title, price or description.");
+        throw new Error(
+          saved.format === "link" ? "This is a paid link, not a Codes item. Use set_paywall to change its title, price or description." : "This is a gallery, video or drama, not a Codes item. Use update_content to change its title, price or description."
+        );
       }
       return api.post(`/api/links/${args.code}/paywall`, await itemBody(api, args, saved));
     })
@@ -46087,6 +46098,38 @@ function registerContentTools(server, api) {
     },
     handle(({ code: code2 }) => api.get(`/api/content/${code2}`))
   );
+  server.registerTool(
+    "update_content",
+    {
+      title: "Update Content Item",
+      description: `Change a gallery's, video's or drama's title, price, description, label or cover. Only the fields you pass change: a field left out keeps its saved value (pass description "" or coverUrl "" to remove them). Title and price are required only if the item has no paywall. A gallery's cover is one of its own pictures, so coverUrl is refused for a gallery. Its pictures, videos and episodes are not changed here: use add_images or add_episodes for those. For a paid link use set_paywall; for a Codes item use update_codes.`,
+      inputSchema: {
+        code,
+        title: paywallFields.title.optional().describe("What the consumer sees as the title. Left out: the saved title is kept."),
+        price: paywallFields.price.optional().describe("Price in USDT/USDC as a decimal string. Left out: the saved price is kept."),
+        description: paywallFields.description.describe(
+          `Shown before payment. Supports **bold**, _italic_ and lists with '- ' or '1. '. Links show as plain text. "" removes it; left out keeps the saved one.`
+        ),
+        coverUrl: coverField.describe(
+          `A drama's cover: a third-party https image URL. "" removes it; left out keeps the saved one. Refused for a gallery (its cover is one of its pictures).`
+        ),
+        blurCover: external_exports.boolean().optional().describe("Blur the cover on the landing page. Left out: the saved setting is kept."),
+        payoutWalletIds: paywallFields.payoutWalletIds,
+        verifyPayer: paywallFields.verifyPayer,
+        translations: paywallFields.translations
+      }
+    },
+    handle(async (args) => {
+      const saved = await getSavedPaywall(api, args.code);
+      if (!saved) throw new Error("This item has no paywall to update.");
+      if (saved.product === "codes") throw new Error("This is a Codes item. Use update_codes to change it.");
+      if (saved.format === "link") throw new Error("This is a paid link, not a Content item. Use set_paywall to change it.");
+      if (saved.format === "images" && args.coverUrl !== void 0) {
+        throw new Error("A gallery's cover is one of its own pictures, so it can't be set from a URL.");
+      }
+      return savePaywall(api, args, saved);
+    })
+  );
 }
 async function describeImages(picked) {
   return Promise.all(
@@ -46286,7 +46329,7 @@ function registerLinkTools(server, api) {
     "set_paywall",
     {
       title: "Set Paywall",
-      description: 'Turn a link into a Gated link, or change its paywall: consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Only the fields you pass change: a field left out keeps its saved value (pass description "" or coverUrl "" to remove them). Title and price are needed only when the link has no paywall yet. The access code is never shown to an API key; leave accessCode out to keep the one saved. Works for Content items too, to rename a gallery, video or drama. To sell accounts, keys or other codes each consumer gets their own of, use create_codes instead.',
+      description: 'Turn a link into a Gated link, or change its paywall: consumers pay to get the destination and, optionally, an access code such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. Only the fields you pass change: a field left out keeps its saved value (pass description "" or coverUrl "" to remove them). Title and price are needed only when the link has no paywall yet. The access code is never shown to an API key; leave accessCode out to keep the one saved. It also works on Content items, but update_content is the tool for those. To sell accounts, keys or other codes each consumer gets their own of, use create_codes instead.',
       inputSchema: {
         code,
         ...paywallFields,
@@ -46301,16 +46344,7 @@ function registerLinkTools(server, api) {
       }
     },
     handle(
-      async (args) => {
-        const saved = await getSavedPaywall(api, args.code);
-        const input2 = keepSaved(args, saved);
-        const body = await paywallBody(api, input2, {
-          coverUrl: input2.coverUrl ?? null,
-          coverBlur: args.blurCover ?? saved?.coverBlur ?? false,
-          ...args.accessCode === void 0 ? {} : { accessCode: args.accessCode }
-        });
-        return api.post(`/api/links/${args.code}/paywall`, body);
-      }
+      async (args) => savePaywall(api, args, await getSavedPaywall(api, args.code))
     )
   );
 }
@@ -46371,7 +46405,7 @@ function registerOrderTools(server, api) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.6.5" : "dev" },
+    { name: "xbitto", version: true ? "0.7.0" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses an address as target_unsafe or text as text_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

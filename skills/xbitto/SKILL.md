@@ -47,8 +47,8 @@ API key.
    episodes skipped with `add_episodes`.
 6. **Dramas**: a folder is taken in natural name order (EP2 before EP10). `freeCount` is at most half the
    episodes. It takes orders once at least `freeCount + 1` episodes (and at least 2) are ready.
-7. `set_paywall` and `update_codes` change only the fields you pass. Rename a gallery, video, drama or paid link with
-   `set_paywall`; `update_codes` is for Codes items only (it refuses anything else). A title-only rename keeps the price, description, cover, wallets and the rest. Title and price are needed only
+7. Each item type has its own update tool, and each refuses the others: `update_content` for a gallery, video or
+   drama, `set_paywall` for a paid link, `update_codes` for a Codes item. A title-only rename keeps the price, description, cover, wallets and the rest. Title and price are needed only
    for a link with no paywall yet. Pass `""` for `description` or `coverUrl` to remove them. The access code, unsold codes, the codes an order received and a
    Codes item's note are never shown to an API key; leave `accessCode` or `note` out to keep the saved one.
 8. **Other languages**: every tool that sells takes `translations`, the title and description again per language,

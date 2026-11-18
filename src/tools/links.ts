@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Api } from "../api.js";
-import { code, coverField, getSavedPaywall, handle, keepSaved, paywallBody, paywallFields, query } from "./common.js";
+import { code, coverField, getSavedPaywall, handle, paywallFields, query, savePaywall, type PaywallArgs } from "./common.js";
 
 // The account, links, Gated links' paywalls, tags and the store.
 
@@ -187,7 +187,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
         "such as an extraction code or a password, the same for everyone. Ask the user for the title and price, and whether there is a code, before calling. " +
         "Only the fields you pass change: a field left out keeps its saved value (pass description \"\" or coverUrl \"\" to remove them). " +
         "Title and price are needed only when the link has no paywall yet. The access code is never shown to an API key; leave accessCode out to keep the one saved. " +
-        "Works for Content items too, to rename a gallery, video or drama. " +
+        "It also works on Content items, but update_content is the tool for those. " +
         "To sell accounts, keys or other codes each consumer gets their own of, use create_codes instead.",
       inputSchema: {
         code,
@@ -203,26 +203,7 @@ export function registerLinkTools(server: McpServer, api: Api) {
       },
     },
     handle(
-      async (args: {
-        code: string;
-        title?: string;
-        description?: string;
-        price?: string;
-        payoutWalletIds?: string[];
-        verifyPayer?: boolean;
-        coverUrl?: string;
-        blurCover?: boolean;
-        accessCode?: string;
-      }) => {
-        const saved = await getSavedPaywall(api, args.code);
-        const input = keepSaved(args, saved);
-        const body = await paywallBody(api, input, {
-          coverUrl: input.coverUrl ?? null,
-          coverBlur: args.blurCover ?? saved?.coverBlur ?? false,
-          ...(args.accessCode === undefined ? {} : { accessCode: args.accessCode }),
-        });
-        return api.post(`/api/links/${args.code}/paywall`, body);
-      },
+      async (args: PaywallArgs) => savePaywall(api, args, await getSavedPaywall(api, args.code)),
     ),
   );
 }

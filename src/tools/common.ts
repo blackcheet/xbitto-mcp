@@ -78,6 +78,7 @@ export const coverField = z
 // What a paywall holds now, as the API returns it to its owner (routes/paywalls.ts ownerView).
 export type SavedPaywall = {
   product: "link" | "codes";
+  format: "link" | "video" | "images";
   title: string;
   description: string;
   priceMicro: number;
@@ -119,6 +120,31 @@ export function keepSaved<A extends { title?: string; price?: string; descriptio
     payoutWalletIds: payoutWalletIds?.length ? payoutWalletIds : undefined,
     coverUrl: args.coverUrl === undefined ? (saved?.coverUrl ?? undefined) : args.coverUrl || undefined,
   };
+}
+
+// Saves a paywall from the arguments an agent passed, keeping every saved setting it left out. Shared by
+// set_paywall (links), update_content (galleries, videos, dramas) and update_codes (Codes items).
+export type PaywallArgs = {
+  code: string;
+  title?: string;
+  description?: string;
+  price?: string;
+  payoutWalletIds?: string[];
+  verifyPayer?: boolean;
+  translations?: Translations;
+  coverUrl?: string;
+  blurCover?: boolean;
+  accessCode?: string;
+};
+
+export async function savePaywall(api: Api, args: PaywallArgs, saved: SavedPaywall | null) {
+  const input = keepSaved(args, saved);
+  const body = await paywallBody(api, input, {
+    coverUrl: input.coverUrl ?? null,
+    coverBlur: args.blurCover ?? saved?.coverBlur ?? false,
+    ...(args.accessCode === undefined ? {} : { accessCode: args.accessCode }),
+  });
+  return api.post(`/api/links/${args.code}/paywall`, body);
 }
 
 // The request body for a paywall, with the wallets filled in when the agent named none.

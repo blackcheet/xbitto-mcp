@@ -92,6 +92,7 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `create_video` | Sell a video, with an optional preview clip |
 | `create_drama` | Sell a drama of up to 100 episodes for one price, first few free |
 | `add_episodes` | Add episodes to the end of a drama |
+| `update_content` | Change a gallery's, video's or drama's title, price, description, label or cover |
 | `get_upload_job` | Follow an upload running in the background |
 | `list_content`, `get_content` | Your galleries, videos and dramas, and whether they are ready |
 | `list_orders`, `get_order` | Your orders |

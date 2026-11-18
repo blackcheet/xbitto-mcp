@@ -4,7 +4,7 @@ import { wait, type Api } from "../api.js";
 import { IMAGE_EXTENSIONS, IMAGE_MAX_BYTES, imagePixels, imageType, pickFiles, VIDEO_EXTENSIONS, videoType, type LocalFile } from "../files.js";
 import { getJob, jobSummary, listJobs, runItem, startJob, type Job } from "../jobs.js";
 import { sendImage, sendVideo, type UploadGrant } from "../uploads.js";
-import { code, handle, paywallBody, paywallFields } from "./common.js";
+import { code, coverField, getSavedPaywall, handle, paywallBody, paywallFields, savePaywall } from "./common.js";
 
 // Content: galleries in the creator's Bunny Storage zone, videos and dramas (short series in episodes) in
 // their Bunny Stream library. Each tool creates the item first, so a refusal (a bad price, Bunny not
@@ -253,6 +253,44 @@ export function registerContentTools(server: McpServer, api: Api) {
       annotations: { readOnlyHint: true },
     },
     handle(({ code }: { code: string }) => api.get(`/api/content/${code}`)),
+  );
+
+  // Changes a gallery's, video's or drama's paywall; its pictures, videos and episodes are not touched here.
+  server.registerTool(
+    "update_content",
+    {
+      title: "Update Content Item",
+      description:
+        "Change a gallery's, video's or drama's title, price, description, label or cover. Only the fields you pass change: a field left out keeps its saved value " +
+        "(pass description \"\" or coverUrl \"\" to remove them). Title and price are required only if the item has no paywall. " +
+        "A gallery's cover is one of its own pictures, so coverUrl is refused for a gallery. Its pictures, videos and episodes are not changed here: use add_images or add_episodes for those. " +
+        "For a paid link use set_paywall; for a Codes item use update_codes.",
+      inputSchema: {
+        code,
+        title: paywallFields.title.optional().describe("What the consumer sees as the title. Left out: the saved title is kept."),
+        price: paywallFields.price.optional().describe("Price in USDT/USDC as a decimal string. Left out: the saved price is kept."),
+        description: paywallFields.description.describe(
+          'Shown before payment. Supports **bold**, _italic_ and lists with \'- \' or \'1. \'. Links show as plain text. "" removes it; left out keeps the saved one.',
+        ),
+        coverUrl: coverField.describe(
+          'A drama\'s cover: a third-party https image URL. "" removes it; left out keeps the saved one. Refused for a gallery (its cover is one of its pictures).',
+        ),
+        blurCover: z.boolean().optional().describe("Blur the cover on the landing page. Left out: the saved setting is kept."),
+        payoutWalletIds: paywallFields.payoutWalletIds,
+        verifyPayer: paywallFields.verifyPayer,
+        translations: paywallFields.translations,
+      },
+    },
+    handle(async (args: Parameters<typeof savePaywall>[1]) => {
+      const saved = await getSavedPaywall(api, args.code);
+      if (!saved) throw new Error("This item has no paywall to update.");
+      if (saved.product === "codes") throw new Error("This is a Codes item. Use update_codes to change it.");
+      if (saved.format === "link") throw new Error("This is a paid link, not a Content item. Use set_paywall to change it.");
+      if (saved.format === "images" && args.coverUrl !== undefined) {
+        throw new Error("A gallery's cover is one of its own pictures, so it can't be set from a URL.");
+      }
+      return savePaywall(api, args, saved);
+    }),
   );
 }
 

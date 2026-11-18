@@ -204,12 +204,12 @@ describe("changing a saved paywall", () => {
   // A gallery, video, drama or paid link saves with product "link", codeLabel null and maxPerOrder 1. The
   // API refuses Codes fields on those (invalid_input), so update_codes must not send them: it says where to go.
   const content = { ...saved, product: "link", codeLabel: null, maxPerOrder: 1, coverUrl: null };
-  it("update_codes refuses a Content item and sends nothing, pointing to set_paywall", async () => {
-    const { api, calls } = fakeApi(route(content));
+  it("update_codes refuses a Content item and sends nothing, pointing to update_content", async () => {
+    const { api, calls } = fakeApi(route({ ...content, format: "images" }));
     const { call } = await mcpClient(api);
     const result = await call("update_codes", { code: "aB3xY9", title: "New name" });
     expect(result.error).toBe(true);
-    expect(JSON.stringify(result)).toContain("set_paywall");
+    expect(JSON.stringify(result)).toContain("update_content");
     expect(saves(calls)).toHaveLength(0);
   });
 
@@ -220,6 +220,51 @@ describe("changing a saved paywall", () => {
     const [save] = saves(calls);
     expect(save!.body).toMatchObject({ title: "New name", price: "4.99", description: "Keep me" });
     for (const field of ["codeLabel", "maxPerOrder", "note", "codeMode"]) expect(save!.body).not.toHaveProperty(field);
+  });
+
+  describe("update_content", () => {
+    const gallery = { ...content, format: "images", product: "link", coverUrl: null, coverBlur: 0 };
+    const drama = { ...content, format: "video", product: "link", coverUrl: "https://img.example/old.jpg", coverBlur: 40 };
+
+    it("renames a gallery and keeps everything else, without Codes fields", async () => {
+      const { api, calls } = fakeApi(route(gallery));
+      const { call } = await mcpClient(api);
+      expect((await call("update_content", { code: "aB3xY9", title: "Spring set" })).error).toBeFalsy();
+      const [save] = saves(calls);
+      expect(save!.body).toMatchObject({ title: "Spring set", price: "4.99", description: "Keep me", coverUrl: null, coverBlur: 0 });
+      for (const field of ["codeLabel", "maxPerOrder", "note", "codeMode", "accessCode"]) expect(save!.body).not.toHaveProperty(field);
+    });
+
+    it("changes a drama's cover and keeps its title", async () => {
+      const { api, calls } = fakeApi(route(drama));
+      const { call } = await mcpClient(api);
+      expect((await call("update_content", { code: "aB3xY9", coverUrl: "https://img.example/new.jpg" })).error).toBeFalsy();
+      const [save] = saves(calls);
+      expect(save!.body).toMatchObject({ title: "Old name", coverUrl: "https://img.example/new.jpg", coverBlur: 40 });
+    });
+
+    it("refuses a gallery cover URL and sends nothing", async () => {
+      const { api, calls } = fakeApi(route(gallery));
+      const { call } = await mcpClient(api);
+      expect((await call("update_content", { code: "aB3xY9", coverUrl: "https://img.example/x.jpg" })).error).toBe(true);
+      expect(saves(calls)).toHaveLength(0);
+    });
+
+    it("refuses a Codes item and a paid link, each naming its own tool", async () => {
+      const codes = fakeApi(route({ ...saved, product: "codes", format: "link" }));
+      const codesClient = await mcpClient(codes.api);
+      const fromCodes = await codesClient.call("update_content", { code: "aB3xY9", title: "x" });
+      expect(fromCodes.error).toBe(true);
+      expect(JSON.stringify(fromCodes)).toContain("update_codes");
+      expect(saves(codes.calls)).toHaveLength(0);
+
+      const link = fakeApi(route({ ...saved, product: "link", format: "link", codeLabel: null, maxPerOrder: 1 }));
+      const linkClient = await mcpClient(link.api);
+      const fromLink = await linkClient.call("update_content", { code: "aB3xY9", title: "x" });
+      expect(fromLink.error).toBe(true);
+      expect(JSON.stringify(fromLink)).toContain("set_paywall");
+      expect(saves(link.calls)).toHaveLength(0);
+    });
   });
 });
 
