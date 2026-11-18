@@ -77,6 +77,7 @@ export const coverField = z
 
 // What a paywall holds now, as the API returns it to its owner (routes/paywalls.ts ownerView).
 export type SavedPaywall = {
+  product: "link" | "codes";
   title: string;
   description: string;
   priceMicro: number;

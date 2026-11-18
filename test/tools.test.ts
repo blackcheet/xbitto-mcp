@@ -143,6 +143,7 @@ describe("set_paywall", () => {
 
 describe("changing a saved paywall", () => {
   const saved = {
+    product: "codes",
     title: "Old name",
     description: "Keep me",
     priceMicro: 4990000,
@@ -198,6 +199,27 @@ describe("changing a saved paywall", () => {
     const [save] = saves(calls);
     expect(save!.body).toMatchObject({ title: "New name", price: "4.99", codeLabel: "License Key", maxPerOrder: 3 });
     expect(save!.body).not.toHaveProperty("note");
+  });
+
+  // A gallery, video, drama or paid link saves with product "link", codeLabel null and maxPerOrder 1. The
+  // API refuses Codes fields on those (invalid_input), so update_codes must not send them: it says where to go.
+  const content = { ...saved, product: "link", codeLabel: null, maxPerOrder: 1, coverUrl: null };
+  it("update_codes refuses a Content item and sends nothing, pointing to set_paywall", async () => {
+    const { api, calls } = fakeApi(route(content));
+    const { call } = await mcpClient(api);
+    const result = await call("update_codes", { code: "aB3xY9", title: "New name" });
+    expect(result.error).toBe(true);
+    expect(JSON.stringify(result)).toContain("set_paywall");
+    expect(saves(calls)).toHaveLength(0);
+  });
+
+  it("set_paywall renames a Content item without Codes fields", async () => {
+    const { api, calls } = fakeApi(route(content));
+    const { call } = await mcpClient(api);
+    expect((await call("set_paywall", { code: "aB3xY9", title: "New name" })).error).toBeFalsy();
+    const [save] = saves(calls);
+    expect(save!.body).toMatchObject({ title: "New name", price: "4.99", description: "Keep me" });
+    for (const field of ["codeLabel", "maxPerOrder", "note", "codeMode"]) expect(save!.body).not.toHaveProperty(field);
   });
 });
 

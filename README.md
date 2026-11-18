@@ -85,7 +85,7 @@ To stay on one version, add a tag: `github:blackcheet/xbitto-mcp#v0.1.0`.
 | `set_paywall` | Sell a link: price, title, description, cover and an optional access code |
 | `create_codes` | Sell codes (accounts, license keys, proxies, gift cards), each consumer getting their own: created with its codes, from a list or a text file |
 | `add_codes` | Add codes to an item's stock, up to 1000 in one call, 100 per request |
-| `update_codes` | Change an item's price, title, label, how many codes one order can buy, or its note |
+| `update_codes` | Change a Codes item's price, title, label, how many codes one order can buy, or its note |
 | `list_codes`, `get_codes` | Your Codes items and how many codes each has left, sold and owed |
 | `create_gallery` | Sell 1–20 pictures from a folder |
 | `add_images` | Finish a gallery whose upload was cut off, or add pictures to it |
