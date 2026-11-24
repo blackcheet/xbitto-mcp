@@ -46193,7 +46193,7 @@ async function uploadEpisodes(api, job, code2, title, picked, first) {
 
 // src/tools/links.ts
 var TAG_MAX_LENGTH = 24;
-var NETWORK_NAMES = { solana: "Solana", tron: "TRON" };
+var NETWORK_NAMES = { base: "Base", solana: "Solana", bsc: "BNB Smart Chain", tron: "TRON" };
 var amount = (micro) => String(micro / 1e6);
 async function readiness(api) {
   const [me, credits, quota, wallets, stream, storage, paywalls, policy] = await Promise.all([
@@ -46405,7 +46405,7 @@ function registerOrderTools(server, api) {
 // src/server.ts
 function createServer(api) {
   const server = new McpServer(
-    { name: "xbitto", version: true ? "0.7.0" : "dev" },
+    { name: "xbitto", version: true ? "0.7.1" : "dev" },
     {
       instructions: "Tools for a creator's Xbitto account: short links, Gated links, Codes (accounts, keys and the like, each consumer getting their own), and Content: galleries, videos and dramas. Before creating anything, call whoami: it says what the account can create now and what the user must fix in the dashboard first. Ask the user for every detail a create tool needs (each tool's description lists them) before calling it: a link's destination can never be changed. Prices are decimal strings in USDT/USDC. Uploads run in the background: start one, then follow it with get_upload_job. When Xbitto refuses an address as target_unsafe or text as text_unsafe it gives no reason; don't try to get around it by rewording. Payout wallets, Bunny connections and account settings can only be changed in the Xbitto dashboard."
     }

@@ -5,8 +5,8 @@ description: Work in a creator's Xbitto account through the xbitto MCP tools - c
 
 # Xbitto
 
-Xbitto turns a short link into a paid link: consumers pay USDT (TRON) or USDC (Solana) straight to the
-creator's wallet, and get what was sold. The `xbitto` MCP tools act in the creator's account with their
+Xbitto turns a short link into a paid link: consumers pay USDC (Base or Solana) or USDT (BNB Smart Chain or
+TRON) straight to the creator's wallet, and get what was sold. The `xbitto` MCP tools act in the creator's account with their
 API key.
 
 ## Words

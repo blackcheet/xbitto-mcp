@@ -13,7 +13,7 @@ type Wallets = { addresses: { chain: string; asset: string; blacklistedAt: numbe
 type Quota = { quota: { used: number; limit: number } };
 type PayerPolicy = { fees: { baseMicro: number; percentBasisPoints: number }; scoringAvailable: boolean };
 
-const NETWORK_NAMES: Record<string, string> = { solana: "Solana", tron: "TRON" };
+const NETWORK_NAMES: Record<string, string> = { base: "Base", solana: "Solana", bsc: "BNB Smart Chain", tron: "TRON" };
 const amount = (micro: number) => String(micro / 1_000_000);
 
 // What the account can make right now, read from the same answers the dashboard reads, so an agent can
